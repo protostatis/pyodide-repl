@@ -429,56 +429,20 @@ async def run_code(code, max_output=100_000, label="", is_llm=False):
         'statsmodels': 'statsmodels',
     }
 
-    try:
-        val = await _execute(exec_part, eval_expr)
-        if val is not None:
-            _namespace["_"] = val
-            html_out = _df_to_html(val)
-            if html_out:
-                html = html_out
-            else:
-                result_repr = repr(val)
-    except (ModuleNotFoundError, ImportError) as e:
-        # Auto-install missing package and retry once
-        mod_name = getattr(e, 'name', '') or ""
-        # Extract module name from ImportError message if not set
-        if not mod_name:
-            msg = str(e)
-            for known in _PKG_MAP:
-                if known in msg:
-                    mod_name = known
-                    break
-            if not mod_name:
-                # Try to extract from "No module named 'xxx'" or "Missing optional dependency 'xxx'"
-                import re as _re
-                m = _re.search(r"['\"]([a-zA-Z_][a-zA-Z0-9_]*)['\"]", msg)
-                if m:
-                    mod_name = m.group(1)
-        pkg_name = _PKG_MAP.get(mod_name, mod_name)
-        # Packages that must be loaded via pyodide.loadPackage (WASM built-ins)
-        _PYODIDE_BUILTINS = {
-            'matplotlib', 'scipy', 'scikit-learn', 'sklearn',
-            'numpy', 'PIL', 'Pillow', 'lxml', 'sqlalchemy',
-            'sympy', 'networkx', 'regex', 'pydantic',
-            'Crypto', 'cryptography', 'jsonschema',
-        }
-        if pkg_name:
+    # Packages that must be loaded via pyodide.loadPackage (WASM built-ins)
+    _PYODIDE_BUILTINS = {
+        'matplotlib', 'scipy', 'scikit-learn', 'sklearn',
+        'numpy', 'PIL', 'Pillow', 'lxml', 'sqlalchemy',
+        'sympy', 'networkx', 'regex', 'pydantic',
+        'Crypto', 'cryptography', 'jsonschema',
+    }
+
+    async def _install_and_retry(exec_part, eval_expr, max_retries=5):
+        """Try executing code, auto-installing missing packages up to max_retries times."""
+        nonlocal html, result_repr
+        installed = set()
+        for attempt in range(max_retries + 1):
             try:
-                stdout_buf.write(f"[auto-install] {pkg_name}...\n")
-                if pkg_name in _PYODIDE_BUILTINS or mod_name in _PYODIDE_BUILTINS:
-                    # Use pyodide.loadPackage for built-in WASM packages
-                    from pyodide_js import loadPackage
-                    load_name = _PKG_MAP.get(pkg_name, pkg_name)
-                    await loadPackage(load_name)
-                    # Force agg backend for matplotlib (no DOM in WebWorker)
-                    if mod_name == 'matplotlib' or pkg_name == 'matplotlib':
-                        import matplotlib
-                        matplotlib.use('agg')
-                else:
-                    import micropip
-                    await micropip.install(pkg_name)
-                stdout_buf.write(f"[auto-install] {pkg_name} installed, retrying...\n")
-                # Retry execution
                 val = await _execute(exec_part, eval_expr)
                 if val is not None:
                     _namespace["_"] = val
@@ -487,10 +451,44 @@ async def run_code(code, max_output=100_000, label="", is_llm=False):
                         html = html_out
                     else:
                         result_repr = repr(val)
-            except Exception:
-                error = traceback.format_exc()
-        else:
-            error = traceback.format_exc()
+                return None  # success
+            except (ModuleNotFoundError, ImportError) as e:
+                if attempt == max_retries:
+                    return traceback.format_exc()
+                mod_name = getattr(e, 'name', '') or ""
+                if not mod_name:
+                    msg = str(e)
+                    for known in _PKG_MAP:
+                        if known in msg:
+                            mod_name = known
+                            break
+                    if not mod_name:
+                        import re as _re
+                        m = _re.search(r"['\"]([a-zA-Z_][a-zA-Z0-9_]*)['\"]", msg)
+                        if m:
+                            mod_name = m.group(1)
+                pkg_name = _PKG_MAP.get(mod_name, mod_name)
+                if not pkg_name or pkg_name in installed:
+                    return traceback.format_exc()
+                installed.add(pkg_name)
+                try:
+                    stdout_buf.write(f"[auto-install] {pkg_name}...\n")
+                    if pkg_name in _PYODIDE_BUILTINS or mod_name in _PYODIDE_BUILTINS:
+                        from pyodide_js import loadPackage
+                        load_name = _PKG_MAP.get(pkg_name, pkg_name)
+                        await loadPackage(load_name)
+                        if 'matplotlib' in (mod_name, pkg_name):
+                            import matplotlib
+                            matplotlib.use('agg')
+                    else:
+                        import micropip
+                        await micropip.install(pkg_name)
+                    stdout_buf.write(f"[auto-install] {pkg_name} installed\n")
+                except Exception:
+                    return traceback.format_exc()
+
+    try:
+        error = await _install_and_retry(exec_part, eval_expr)
     except SystemExit as e:
         error = f"SystemExit: code called sys.exit({e.code!r})"
     except KeyboardInterrupt:
