@@ -66,6 +66,78 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // --- Proxy: /api/summarize → Interpret execution results ---
+  if (req.url === "/api/summarize" && req.method === "POST") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    let parsed;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: "Invalid JSON" }));
+      return;
+    }
+
+    const { apiKey, query, code, output, error } = parsed;
+    const key = apiKey || OPENROUTER_KEY;
+    if (!key) {
+      res.writeHead(200);
+      res.end(JSON.stringify({ summary: "" }));
+      return;
+    }
+
+    const systemPrompt = `You are a data analysis assistant interpreting Python notebook results. Given the user's question, the generated code, and its output, provide a concise interpretation.
+
+Rules:
+- 2-4 sentences max
+- Focus on what the data shows, not what the code does
+- Highlight key numbers, trends, or insights
+- If there's an error, explain what went wrong simply
+- Do NOT repeat the raw data — summarize it
+- Use plain language, not technical jargon
+- Return ONLY a JSON object: {"summary": "your interpretation here"}`;
+
+    const userMsg = `Question: ${query}\n\nCode:\n${code}\n\nOutput:\n${(output || "").substring(0, 1000)}${error ? "\n\nError:\n" + error.substring(0, 500) : ""}`;
+
+    try {
+      const model = apiKey ? "google/gemini-2.0-flash-001" : OPENROUTER_MODEL;
+      const upstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${key}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://pyreplab.dev",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMsg },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.3,
+          max_tokens: 200,
+        }),
+      });
+      const result = await upstream.json();
+      const content = result.choices?.[0]?.message?.content || "";
+      let summary = "";
+      try {
+        summary = JSON.parse(content).summary || "";
+      } catch {
+        summary = content;
+      }
+      res.setHeader("Content-Type", "application/json");
+      res.writeHead(200);
+      res.end(JSON.stringify({ summary }));
+    } catch (err) {
+      res.writeHead(200);
+      res.end(JSON.stringify({ summary: "" }));
+    }
+    return;
+  }
+
   // --- Proxy: /api/yahoo/* → Yahoo Finance (bypasses CORS) ---
   if (req.url.startsWith("/api/yahoo/")) {
     const yahooPath = req.url.slice("/api/yahoo/".length);
@@ -123,18 +195,20 @@ Rules:
 - If the user asks to sort, rank, compare, list, or inspect, prefer show_df() over print()
 - The last bare expression auto-displays as an HTML table if it's a DataFrame — no need to wrap it
 - Always print() scalar results you want the user to see
+- Packages auto-install on first import (e.g. sklearn, scipy, seaborn). Just import and use them — no pip install needed
 - Do NOT use open(), eval(), exec(), __import__(), subprocess, os, or shutil — they are blocked
 - Do NOT use requests, urllib, httpx, or any network calls — they don't work in WASM
 - Do NOT use asyncio.run(), asyncio.get_event_loop(), or loop.run_until_complete() — just use bare await
-- matplotlib is available. Use plt.figure() / plt.plot() / plt.show() for charts — they render inline as PNG
+- matplotlib is available. Use plt.figure() / plt.plot() for charts — they render inline as PNG
 - Use a dark style for plots: plt.style.use('dark_background')
-- Always call plt.show() at the end of plotting code
+- Do NOT call plt.show() — plots are captured automatically after execution
 - Data loading helpers available in the namespace:
   - await load_ticker(symbol, period) — stock/crypto prices → DataFrame (date, open, high, low, close, volume, symbol)
     period: '1d','5d','1mo','3mo','6mo','1y','2y','5y','max'. Crypto: 'BTC' → 'BTC-USD', 'ETH' → 'ETH-USD'
   - await load_url(url, format=None) — fetch CSV/JSON/TSV from any URL → DataFrame (auto-detects format)
   - load_csv(text, sep=',') — parse CSV/TSV string directly → DataFrame
 - If the data needed is not in the namespace, write code that loads it using the helpers above
+- Always handle NaN/missing values — use .dropna() before fitting models or computing stats
 - If the query cannot be answered with available data, print a concise explanation of what's missing
 - Keep code focused — one logical step per cell`;
 

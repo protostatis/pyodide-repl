@@ -246,7 +246,14 @@ def _recent_turns(limit=8):
         if t.get("stdout"):
             turn["output"] = t["stdout"][:300]
         if t.get("error"):
-            turn["error"] = t["error"][:200]
+            err = t["error"]
+            # Keep the last line (actual error message) + truncated traceback
+            lines = err.strip().splitlines()
+            last_line = lines[-1] if lines else ""
+            if len(err) > 300:
+                turn["error"] = err[:150] + "\n...\n" + last_line
+            else:
+                turn["error"] = err
         turns.append(turn)
     return turns
 
@@ -373,6 +380,10 @@ async def run_code(code, max_output=100_000, label="", is_llm=False):
             return {"stdout": "", "stderr": "", "error": sanitize_err}
         code = _enforce_output_format(code)
 
+    # Suppress matplotlib non-interactive warning
+    import warnings
+    warnings.filterwarnings('ignore', message='.*FigureCanvasAgg is non-interactive.*')
+
     exec_part, eval_expr = _detect_last_expr(code)
 
     stdout_buf = io.StringIO()
@@ -384,7 +395,10 @@ async def run_code(code, max_output=100_000, label="", is_llm=False):
     saved_argv = sys.argv
     sys.argv = [""]
 
-    try:
+    async def _execute(exec_part, eval_expr):
+        """Execute code, return (val, error) where val is the last expression result."""
+        nonlocal html, result_repr
+        val = None
         with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
             if exec_part.strip():
                 _code_obj = compile(exec_part, "<pyreplab>", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
@@ -396,6 +410,56 @@ async def run_code(code, max_output=100_000, label="", is_llm=False):
                 val = eval(_code_obj, _namespace)
                 if asyncio.iscoroutine(val):
                     val = await val
+        return val
+
+    # Package name mapping for common aliases
+    _PKG_MAP = {
+        'sklearn': 'scikit-learn',
+        'cv2': 'opencv-python',
+        'PIL': 'Pillow',
+        'bs4': 'beautifulsoup4',
+        'yaml': 'pyyaml',
+        'dateutil': 'python-dateutil',
+        'openpyxl': 'openpyxl',
+        'xlrd': 'xlrd',
+        'seaborn': 'seaborn',
+        'statsmodels': 'statsmodels',
+    }
+
+    try:
+        val = await _execute(exec_part, eval_expr)
+        if val is not None:
+            _namespace["_"] = val
+            html_out = _df_to_html(val)
+            if html_out:
+                html = html_out
+            else:
+                result_repr = repr(val)
+    except (ModuleNotFoundError, ImportError) as e:
+        # Auto-install missing package and retry once
+        mod_name = getattr(e, 'name', '') or ""
+        # Extract module name from ImportError message if not set
+        if not mod_name:
+            msg = str(e)
+            for known in _PKG_MAP:
+                if known in msg:
+                    mod_name = known
+                    break
+            if not mod_name:
+                # Try to extract from "No module named 'xxx'" or "Missing optional dependency 'xxx'"
+                import re as _re
+                m = _re.search(r"['\"]([a-zA-Z_][a-zA-Z0-9_]*)['\"]", msg)
+                if m:
+                    mod_name = m.group(1)
+        pkg_name = _PKG_MAP.get(mod_name, mod_name)
+        if pkg_name:
+            try:
+                import micropip
+                stdout_buf.write(f"[auto-install] {pkg_name}...\n")
+                await micropip.install(pkg_name)
+                stdout_buf.write(f"[auto-install] {pkg_name} installed, retrying...\n")
+                # Retry execution
+                val = await _execute(exec_part, eval_expr)
                 if val is not None:
                     _namespace["_"] = val
                     html_out = _df_to_html(val)
@@ -403,6 +467,10 @@ async def run_code(code, max_output=100_000, label="", is_llm=False):
                         html = html_out
                     else:
                         result_repr = repr(val)
+            except Exception:
+                error = traceback.format_exc()
+        else:
+            error = traceback.format_exc()
     except SystemExit as e:
         error = f"SystemExit: code called sys.exit({e.code!r})"
     except KeyboardInterrupt:

@@ -54,11 +54,16 @@
     .data-card .card-desc { font-size: 11px; color: #484f58; line-height: 1.3; }
 
     .upload-area {
-      border: 2px dashed #21262d; border-radius: 8px; padding: 20px; text-align: center;
-      color: #484f58; font-size: 13px; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+      border: 2px dashed #30363d; border-radius: 12px; padding: 32px 20px; text-align: center;
+      color: #8b949e; font-size: 14px; cursor: pointer; transition: all 0.2s;
+      background: #161822; margin-top: 8px;
     }
-    .upload-area:hover, .upload-area.drag-over { border-color: #58a6ff; color: #58a6ff; }
+    .upload-area:hover { border-color: #58a6ff; color: #c9d1d9; background: #1a1f2e; }
+    .upload-area.drag-over { border-color: #58a6ff; color: #58a6ff; background: #0c2d6b22; border-style: solid; }
     .upload-area input[type="file"] { display: none; }
+    .upload-icon { font-size: 28px; margin-bottom: 8px; display: block; }
+    .upload-title { font-weight: 600; font-size: 15px; color: #c9d1d9; margin-bottom: 4px; }
+    .upload-formats { font-size: 12px; color: #484f58; margin-top: 6px; }
 
     /* Cell */
     .cell {
@@ -114,6 +119,13 @@
       padding: 8px 12px; margin-bottom: 8px; color: #e6edf3; white-space: pre-wrap; font-size: 12px;
     }
     .cell-output .llm-note { color: #8b949e; font-style: italic; font-size: 11px; margin-bottom: 6px; }
+    .cell-output .agent-summary {
+      margin-top: 10px; padding: 10px 14px; background: #1a1f2e; border-left: 3px solid #6e40c9;
+      border-radius: 0 6px 6px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px; line-height: 1.5; color: #c9d1d9;
+    }
+    .cell-output .agent-summary strong { color: #d2a8ff; }
+    .cell-output .agent-thinking { color: #484f58; font-size: 11px; font-style: italic; margin-top: 8px; }
 
     .cell-output .df-output { margin: 6px 0; overflow-x: auto; }
     .df-table { border-collapse: collapse; font-size: 12px; font-family: monospace; }
@@ -152,7 +164,10 @@
     <div class="data-grid" id="data-grid"></div>
 
     <div class="upload-area" id="upload-area">
-      Drop CSV, JSON, or TSV file here — or click to browse
+      <span class="upload-icon">+</span>
+      <div class="upload-title">Upload your own data</div>
+      Drop a file here or click to browse
+      <div class="upload-formats">CSV, JSON, TSV, Excel (.xlsx, .xls)</div>
       <input type="file" id="file-input" accept=".csv,.json,.jsonl,.tsv,.xlsx,.xls">
     </div>
   </div>
@@ -192,6 +207,7 @@
         { title: 'Flights', desc: 'Monthly airline passengers (144 rows)', code: "df = await load_url('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/flights.csv')", ask: 'plot the seasonal pattern' },
         { title: 'CO2 Levels', desc: 'Mauna Loa monthly CO2 (1958-present)', code: "df = await load_url('https://raw.githubusercontent.com/datasets/co2-ppm/main/data/co2-mm-mlo.csv')", ask: 'plot the CO2 trend over time' },
         { title: 'World Population', desc: 'Country populations over time', code: "df = await load_url('https://raw.githubusercontent.com/datasets/population/main/data/population.csv')", ask: 'which countries grew the fastest?' },
+        { title: 'Health Spending', desc: 'Healthcare expenditure vs life expectancy by country', code: "df = await load_url('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/healthexp.csv')", ask: 'does spending more on healthcare improve life expectancy?' },
       ],
     };
 
@@ -245,20 +261,33 @@
       if (!ready) return;
       const name = file.name.replace(/[^a-zA-Z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase();
       const varName = name.replace(/\.(csv|json|jsonl|tsv|xlsx|xls)$/i, '') || 'uploaded';
-      const reader = new FileReader();
-      reader.onload = () => {
-        const text = reader.result;
-        const ext = file.name.split('.').pop().toLowerCase();
-        let code;
-        if (ext === 'json' || ext === 'jsonl') {
-          code = `import json as _json\n_data = _json.loads(${JSON.stringify(text)})\nif isinstance(_data, list):\n    ${varName} = pd.DataFrame(_data)\nelse:\n    ${varName} = pd.DataFrame([_data] if isinstance(_data, dict) else {'value': [_data]})\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
-        } else {
-          const sep = ext === 'tsv' ? "\\t" : ",";
-          code = `import io as _io\n${varName} = pd.read_csv(_io.StringIO(${JSON.stringify(text)}), sep="${sep}")\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
-        }
-        startNotebook(code, `describe the ${varName} data`);
-      };
-      reader.readAsText(file);
+      const ext = file.name.split('.').pop().toLowerCase();
+
+      if (ext === 'xlsx' || ext === 'xls') {
+        // Excel: read as base64, decode in Python with openpyxl
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = btoa(new Uint8Array(reader.result).reduce((s, b) => s + String.fromCharCode(b), ''));
+          const code = `import io as _io, base64 as _b64\n_bytes = _b64.b64decode(${JSON.stringify(base64)})\n${varName} = pd.read_excel(_io.BytesIO(_bytes))\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
+          startNotebook(code, `describe the ${varName} data`);
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        // Text formats: CSV, JSON, TSV
+        const reader = new FileReader();
+        reader.onload = () => {
+          const text = reader.result;
+          let code;
+          if (ext === 'json' || ext === 'jsonl') {
+            code = `import json as _json\n_data = _json.loads(${JSON.stringify(text)})\nif isinstance(_data, list):\n    ${varName} = pd.DataFrame(_data)\nelse:\n    ${varName} = pd.DataFrame([_data] if isinstance(_data, dict) else {'value': [_data]})\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
+          } else {
+            const sep = ext === 'tsv' ? "\\t" : ",";
+            code = `import io as _io\n${varName} = pd.read_csv(_io.StringIO(${JSON.stringify(text)}), sep="${sep}")\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
+          }
+          startNotebook(code, `describe the ${varName} data`);
+        };
+        reader.readAsText(file);
+      }
     }
 
     // --- Transition from landing to notebook ---
@@ -476,20 +505,44 @@
         output.appendChild(codeBlock);
         output.classList.add('has-output');
 
-        await new Promise((resolve) => {
+        const execResult = await new Promise((resolve) => {
           const timeout = setTimeout(() => {
-            showResult(output, { error: 'Execution timed out (30s)' }, true);
-            finishCell(cell);
-            resolve();
+            resolve({ error: 'Execution timed out (30s)' });
           }, 35000);
           window.onPyreplabResult = function(result) {
             clearTimeout(timeout);
-            showResult(output, result, true);
-            finishCell(cell);
-            resolve();
+            resolve(result);
           };
           window.runInPyreplab(generatedCode, true);
         });
+        showResult(output, execResult, true);
+
+        // Agent interpretation — summarize the results
+        const thinkingEl = document.createElement('div');
+        thinkingEl.className = 'agent-thinking';
+        thinkingEl.textContent = 'interpreting...';
+        output.appendChild(thinkingEl);
+        finishCell(cell);
+
+        // Fire summary call in background (don't block the cell)
+        fetch('/api/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            apiKey: apiKey.trim(),
+            query,
+            code: generatedCode,
+            output: (execResult.stdout || '') + (execResult.result || ''),
+            error: execResult.error || '',
+          })
+        }).then(r => r.json()).then(data => {
+          if (data.summary) {
+            thinkingEl.className = 'agent-summary';
+            thinkingEl.textContent = data.summary;
+          } else {
+            thinkingEl.remove();
+          }
+        }).catch(() => thinkingEl.remove());
 
       } catch (err) {
         showResult(output, { error: err.message });
