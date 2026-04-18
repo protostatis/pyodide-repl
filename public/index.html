@@ -127,12 +127,21 @@
     .cell-output .agent-summary strong { color: #d2a8ff; }
     .cell-output .agent-thinking { color: #484f58; font-size: 11px; font-style: italic; margin-top: 8px; }
 
-    .cell-output .df-output { margin: 6px 0; overflow-x: auto; }
+    .cell-output .df-output { margin: 6px 0; overflow-x: auto; position: relative; }
     .df-table { border-collapse: collapse; font-size: 12px; font-family: monospace; }
     .df-table th { background: #161822; color: #58a6ff; padding: 4px 10px; border: 1px solid #21262d; text-align: left; font-weight: 600; }
     .df-table td { padding: 4px 10px; border: 1px solid #21262d; color: #c9d1d9; }
     .df-table tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
     .df-table tr:hover td { background: rgba(88,166,255,0.06); }
+    .df-export-bar {
+      display: flex; gap: 6px; margin-top: 6px; align-items: center;
+    }
+    .df-export-bar button {
+      padding: 3px 10px; font-size: 11px; background: #21262d; border: 1px solid #30363d;
+      border-radius: 4px; color: #8b949e; cursor: pointer; font-family: monospace;
+    }
+    .df-export-bar button:hover { color: #c9d1d9; border-color: #58a6ff; }
+    .df-export-bar .export-label { font-size: 11px; color: #484f58; }
 
     #add-cell-btn {
       display: block; width: 100%; padding: 10px; background: transparent;
@@ -587,10 +596,71 @@
         const div = document.createElement('div');
         div.className = 'df-output';
         div.innerHTML = result.html;
+        // Add export bar if it contains a table
+        if (div.querySelector('.df-table')) {
+          const bar = document.createElement('div');
+          bar.className = 'df-export-bar';
+          bar.innerHTML = '<span class="export-label">Export:</span>';
+          ['CSV', 'JSON', 'Excel'].forEach(fmt => {
+            const btn = document.createElement('button');
+            btn.textContent = fmt;
+            btn.addEventListener('click', () => exportTable(div.querySelector('.df-table'), fmt));
+            bar.appendChild(btn);
+          });
+          div.appendChild(bar);
+        }
         output.appendChild(div);
       }
       if (result.result) appendOutput(output, result.result, 'result');
       if (result.error) appendOutput(output, result.error, 'error');
+    }
+
+    function exportTable(table, format) {
+      // Parse HTML table to array of objects
+      const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim());
+      const rows = [];
+      table.querySelectorAll('tbody tr').forEach(tr => {
+        const row = {};
+        tr.querySelectorAll('td').forEach((td, i) => {
+          if (i < headers.length) row[headers[i]] = td.textContent.trim();
+        });
+        rows.push(row);
+      });
+
+      let content, mime, ext;
+      if (format === 'CSV') {
+        const csvRows = [headers.join(',')];
+        rows.forEach(row => {
+          csvRows.push(headers.map(h => {
+            const v = row[h] || '';
+            return v.includes(',') || v.includes('"') || v.includes('\n') ? '"' + v.replace(/"/g, '""') + '"' : v;
+          }).join(','));
+        });
+        content = csvRows.join('\n');
+        mime = 'text/csv';
+        ext = 'csv';
+      } else if (format === 'JSON') {
+        content = JSON.stringify(rows, null, 2);
+        mime = 'application/json';
+        ext = 'json';
+      } else if (format === 'Excel') {
+        // Generate CSV for Excel (opens in Excel natively)
+        const csvRows = [headers.join('\t')];
+        rows.forEach(row => {
+          csvRows.push(headers.map(h => row[h] || '').join('\t'));
+        });
+        content = csvRows.join('\n');
+        mime = 'text/tab-separated-values';
+        ext = 'tsv';
+      }
+
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `data.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
     }
 
     function appendOutput(parent, text, cls) {
