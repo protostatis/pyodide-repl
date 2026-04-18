@@ -1,7 +1,8 @@
 import { createServer } from "node:http";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomBytes } from "node:crypto";
 import { WebSocketServer } from "ws";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -25,6 +26,10 @@ const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY || "";
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "xiaomi/mimo-v2-flash";
 const OPENROUTER_FALLBACK = process.env.OPENROUTER_FALLBACK_MODEL || "openrouter/free";
 
+// Slug storage
+const SLUGS_DIR = join(__dirname, "slugs");
+if (!existsSync(SLUGS_DIR)) mkdirSync(SLUGS_DIR, { recursive: true });
+
 const MIME = {
   ".html": "text/html",
   ".js": "application/javascript",
@@ -38,6 +43,57 @@ const server = createServer(async (req, res) => {
   // Required for SharedArrayBuffer (interrupt support)
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
+
+  // --- Slugs: save/load notebook sessions ---
+  if (req.url === "/api/save" && req.method === "POST") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    try {
+      const data = JSON.parse(body);
+      if (!data.cells || !Array.isArray(data.cells)) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: "Missing cells array" }));
+        return;
+      }
+      const slug = randomBytes(4).toString("hex");
+      const session = {
+        slug,
+        created: new Date().toISOString(),
+        title: data.title || "",
+        cells: data.cells.slice(0, 100), // cap at 100 cells
+      };
+      writeFileSync(join(SLUGS_DIR, `${slug}.json`), JSON.stringify(session));
+      res.setHeader("Content-Type", "application/json");
+      res.writeHead(200);
+      res.end(JSON.stringify({ slug, url: `/s/${slug}` }));
+    } catch {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: "Invalid request" }));
+    }
+    return;
+  }
+
+  if (req.url.startsWith("/api/load/")) {
+    const slug = req.url.slice("/api/load/".length).replace(/[^a-f0-9]/g, "");
+    const path = join(SLUGS_DIR, `${slug}.json`);
+    if (!existsSync(path)) {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: "Not found" }));
+      return;
+    }
+    res.setHeader("Content-Type", "application/json");
+    res.writeHead(200);
+    res.end(readFileSync(path));
+    return;
+  }
+
+  // Serve index.html for /s/:slug routes (client-side routing)
+  if (req.url.startsWith("/s/")) {
+    const filePath = join(PUBLIC, "index.html");
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(readFileSync(filePath));
+    return;
+  }
 
   // --- Proxy: /api/proxy?url=... → Fetch any URL (bypasses CORS) ---
   if (req.url.startsWith("/api/proxy?")) {

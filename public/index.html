@@ -161,6 +161,7 @@
     </div>
     <div class="header-actions">
       <button id="new-btn" title="New notebook">New</button>
+      <button id="save-btn" title="Save & share" class="hidden">Share</button>
       <button id="add-top-btn" title="Add cell">+ Cell</button>
     </div>
   </header>
@@ -314,16 +315,17 @@
     }
 
     // --- Transition from landing to notebook ---
-    function startNotebook(loadCode, firstQuestion) {
+    function startNotebook(loadCode, firstQuestion, autoRun) {
       landing.classList.add('hidden');
       notebook.classList.remove('hidden');
+      document.getElementById('save-btn').classList.remove('hidden');
       notebook.innerHTML = '';
 
       // Load data cell
       const loadCell = addCell('code', loadCode);
 
       // First question cell
-      addCell('ask', firstQuestion || '');
+      if (firstQuestion) addCell('ask', firstQuestion);
 
       // Bottom controls
       const addBtnEl = document.createElement('button');
@@ -340,22 +342,94 @@
       hint.textContent = 'Enter to run ask cells | Shift+Enter for code cells | auto-advances to next cell';
       notebook.appendChild(hint);
 
-      // Auto-resize all textareas
       notebook.querySelectorAll('.cell-input').forEach(ta => {
         ta.dispatchEvent(new Event('input'));
       });
 
-      // Auto-run the load cell
-      setTimeout(() => runCell(loadCell), 100);
+      if (autoRun !== false) {
+        setTimeout(() => runCell(loadCell), 100);
+      }
+    }
+
+    // --- Load notebook from slug cells ---
+    function loadFromSlug(session) {
+      landing.classList.add('hidden');
+      notebook.classList.remove('hidden');
+      document.getElementById('save-btn').classList.remove('hidden');
+      notebook.innerHTML = '';
+
+      (session.cells || []).forEach(c => {
+        const cell = addCell(c.type || 'code', c.code || '');
+        // Show saved output if present
+        if (c.output) {
+          const output = cell.querySelector('.cell-output');
+          output.classList.add('has-output');
+          appendOutput(output, c.output, 'stdout');
+        }
+      });
+
+      // Add empty ask cell at the end
+      addCell('ask', '');
+
+      const addBtnEl = document.createElement('button');
+      addBtnEl.id = 'add-cell-btn';
+      addBtnEl.textContent = '+ Add cell';
+      addBtnEl.addEventListener('click', () => {
+        const cell = addCell('ask');
+        cell.querySelector('.cell-input').focus();
+      });
+      notebook.appendChild(addBtnEl);
+
+      const hint = document.createElement('div');
+      hint.className = 'hint';
+      hint.textContent = 'Enter to run ask cells | Shift+Enter for code cells | auto-advances to next cell';
+      notebook.appendChild(hint);
+
+      notebook.querySelectorAll('.cell-input').forEach(ta => {
+        ta.dispatchEvent(new Event('input'));
+      });
+    }
+
+    // --- Save notebook to slug ---
+    async function saveNotebook() {
+      const cells = Array.from(notebook.querySelectorAll('.cell')).map(cell => {
+        const code = cell.querySelector('.cell-input').value;
+        const output = cell.querySelector('.cell-output');
+        const stdout = output ? output.textContent.trim().substring(0, 2000) : '';
+        return { type: cell.dataset.type, code, output: stdout };
+      }).filter(c => c.code.trim());
+
+      try {
+        const resp = await fetch('/api/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cells }),
+        });
+        const data = await resp.json();
+        if (data.slug) {
+          const url = `${location.origin}/s/${data.slug}`;
+          await navigator.clipboard.writeText(url);
+          const btn = document.getElementById('save-btn');
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Share'; }, 2000);
+        }
+      } catch (err) {
+        console.error('Save failed:', err);
+      }
     }
 
     // --- "New" button: reset to landing ---
     document.getElementById('new-btn').addEventListener('click', () => {
       notebook.classList.add('hidden');
+      document.getElementById('save-btn').classList.add('hidden');
       notebook.innerHTML = '';
       landing.classList.remove('hidden');
       cellCounter = 0;
+      history.replaceState(null, '', '/');
     });
+
+    // --- Share button ---
+    document.getElementById('save-btn').addEventListener('click', saveNotebook);
 
     // --- "+ Cell" button ---
     document.getElementById('add-top-btn').addEventListener('click', () => {
@@ -701,8 +775,29 @@
         const f = window._pendingFile;
         window._pendingFile = null;
         handleFileUpload(f);
+      } else if (window._pendingSlug) {
+        const session = window._pendingSlug;
+        window._pendingSlug = null;
+        loadFromSlug(session);
       }
     };
+
+    // --- Load from slug URL on page load ---
+    (async function() {
+      const match = location.pathname.match(/^\/s\/([a-f0-9]+)$/);
+      if (!match) return;
+      try {
+        const resp = await fetch(`/api/load/${match[1]}`);
+        if (!resp.ok) return;
+        const session = await resp.json();
+        if (ready) {
+          loadFromSlug(session);
+        } else {
+          window._pendingSlug = session;
+          landing.classList.add('hidden');
+        }
+      } catch {}
+    })();
   </script>
 </body>
 </html>
