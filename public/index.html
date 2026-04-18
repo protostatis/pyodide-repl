@@ -787,12 +787,14 @@
       const match = location.pathname.match(/^\/s\/([a-f0-9]+)$/);
       if (!match) return;
       try {
-        statusEl.textContent = 'loading session...';
         const resp = await fetch(`/api/load/${match[1]}`);
         if (!resp.ok) return;
         const session = await resp.json();
-        // Show cells immediately — user sees code + saved output while Pyodide loads
         loadFromSlug(session);
+        if (!ready) {
+          statusEl.textContent = 'loading...';
+          statusEl.className = 'loading';
+        }
       } catch {}
     })();
   </script>
