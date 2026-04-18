@@ -360,11 +360,10 @@
 
       (session.cells || []).forEach(c => {
         const cell = addCell(c.type || 'code', c.code || '');
-        // Show saved output if present
-        if (c.output) {
+        if (c.html) {
           const output = cell.querySelector('.cell-output');
           output.classList.add('has-output');
-          appendOutput(output, c.output, 'stdout');
+          output.innerHTML = c.html;
         }
       });
 
@@ -395,8 +394,9 @@
       const cells = Array.from(notebook.querySelectorAll('.cell')).map(cell => {
         const code = cell.querySelector('.cell-input').value;
         const output = cell.querySelector('.cell-output');
-        const stdout = output ? output.textContent.trim().substring(0, 2000) : '';
-        return { type: cell.dataset.type, code, output: stdout };
+        // Save full HTML to preserve charts, tables, and agent summaries
+        const html = output && output.classList.contains('has-output') ? output.innerHTML : '';
+        return { type: cell.dataset.type, code, html };
       }).filter(c => c.code.trim());
 
       try {
