@@ -20,9 +20,9 @@ git clone https://github.com/protostatis/pyodide-repl.git
 cd pyodide-repl
 npm install --production
 
-# Create .env with OpenRouter key
+# Create .env — set your OpenRouter key here
 cat > .env <<'ENVEOF'
-OPENROUTER_API_KEY=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
+OPENROUTER_API_KEY=your-key-here
 OPENROUTER_MODEL=xiaomi/mimo-v2-flash
 OPENROUTER_FALLBACK_MODEL=openrouter/free
 ENVEOF
