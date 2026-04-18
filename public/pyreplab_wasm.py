@@ -470,6 +470,10 @@ async def run_code(code, max_output=100_000, label="", is_llm=False):
                     from pyodide_js import loadPackage
                     load_name = _PKG_MAP.get(pkg_name, pkg_name)
                     await loadPackage(load_name)
+                    # Force agg backend for matplotlib (no DOM in WebWorker)
+                    if mod_name == 'matplotlib' or pkg_name == 'matplotlib':
+                        import matplotlib
+                        matplotlib.use('agg')
                 else:
                     import micropip
                     await micropip.install(pkg_name)
