@@ -573,6 +573,11 @@ self.onmessage = async (e) => {
       }
     }, EXEC_TIMEOUT_MS);
 
+    // Write Excel file to Pyodide FS if provided
+    if (msg.excelBytes && msg.excelName) {
+      pyodide.FS.writeFile(`/tmp/${msg.excelName}`, msg.excelBytes);
+    }
+
     try {
       const escapedCode = JSON.stringify(msg.code);
       const isLlm = msg.isLlm ? "True" : "False";

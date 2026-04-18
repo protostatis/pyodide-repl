@@ -275,11 +275,14 @@
       const ext = file.name.split('.').pop().toLowerCase();
 
       if (ext === 'xlsx' || ext === 'xls') {
-        // Excel: read as base64, decode in Python with openpyxl
+        // Excel: read as ArrayBuffer, write to Pyodide FS, then read_excel
         const reader = new FileReader();
         reader.onload = () => {
-          const base64 = btoa(new Uint8Array(reader.result).reduce((s, b) => s + String.fromCharCode(b), ''));
-          const code = `import io as _io, base64 as _b64\n_bytes = _b64.b64decode(${JSON.stringify(base64)})\n${varName} = pd.read_excel(_io.BytesIO(_bytes))\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
+          const bytes = new Uint8Array(reader.result);
+          // Store bytes globally so the worker can write them to Pyodide FS
+          window._pendingExcelBytes = bytes;
+          window._pendingExcelName = file.name;
+          const code = `${varName} = pd.read_excel("/tmp/${file.name}")\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
           startNotebook(code, `describe the ${varName} data`);
         };
         reader.readAsArrayBuffer(file);

@@ -124,7 +124,12 @@ window.runInPyreplab = function(code, isLlm) {
   if (interruptBuffer) {
     Atomics.store(interruptArray, 0, 0);
   }
-  worker.postMessage({ type: "local-run", code, isLlm: !!isLlm });
+  // If there are pending Excel bytes, send them with the message
+  const excelBytes = window._pendingExcelBytes || null;
+  const excelName = window._pendingExcelName || null;
+  window._pendingExcelBytes = null;
+  window._pendingExcelName = null;
+  worker.postMessage({ type: "local-run", code, isLlm: !!isLlm, excelBytes, excelName });
 };
 
 // --- Local pip install (browser UI) ---
