@@ -455,15 +455,21 @@ async def run_code(code, max_output=100_000, label="", is_llm=False):
                 if m:
                     mod_name = m.group(1)
         pkg_name = _PKG_MAP.get(mod_name, mod_name)
-        # Packages that must be loaded via pyodide.loadPackage (C extensions / built-ins)
-        _PYODIDE_BUILTINS = {'matplotlib', 'scipy', 'scikit-learn', 'numpy', 'PIL', 'Pillow', 'lxml', 'sqlalchemy'}
+        # Packages that must be loaded via pyodide.loadPackage (WASM built-ins)
+        _PYODIDE_BUILTINS = {
+            'matplotlib', 'scipy', 'scikit-learn', 'sklearn',
+            'numpy', 'PIL', 'Pillow', 'lxml', 'sqlalchemy',
+            'sympy', 'networkx', 'regex', 'pydantic',
+            'Crypto', 'cryptography', 'jsonschema',
+        }
         if pkg_name:
             try:
                 stdout_buf.write(f"[auto-install] {pkg_name}...\n")
                 if pkg_name in _PYODIDE_BUILTINS or mod_name in _PYODIDE_BUILTINS:
                     # Use pyodide.loadPackage for built-in WASM packages
                     from pyodide_js import loadPackage
-                    await loadPackage(pkg_name)
+                    load_name = _PKG_MAP.get(pkg_name, pkg_name)
+                    await loadPackage(load_name)
                 else:
                     import micropip
                     await micropip.install(pkg_name)
