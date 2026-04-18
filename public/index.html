@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pyreplab notebook</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+
+    /* Header */
+    header {
+      padding: 10px 20px;
+      background: #161822;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #2a2d3e;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header .left { display: flex; align-items: center; gap: 12px; }
+    header h1 { font-size: 15px; font-weight: 600; color: #c9d1d9; }
+    header h1 span { color: #484f58; font-weight: 400; }
+    #status { font-size: 11px; padding: 2px 8px; border-radius: 3px; font-family: monospace; }
+    #status.idle { background: #0d3320; color: #3fb950; }
+    #status.running { background: #3d2e00; color: #d29922; }
+    #status.loading { background: #0c2d6b; color: #58a6ff; }
+    .header-actions { display: flex; gap: 8px; align-items: center; }
+    .header-actions button {
+      padding: 5px 12px; font-size: 12px; background: #21262d;
+      border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; cursor: pointer;
+    }
+    .header-actions button:hover { background: #30363d; }
+
+    /* Notebook */
+    #notebook { max-width: 960px; margin: 0 auto; padding: 20px 20px 120px; }
+
+    /* --- Landing / Data Picker --- */
+    #landing { max-width: 960px; margin: 0 auto; padding: 40px 20px; }
+    #landing h2 { font-size: 22px; font-weight: 600; color: #c9d1d9; margin-bottom: 6px; }
+    #landing .subtitle { color: #484f58; font-size: 14px; margin-bottom: 24px; }
+
+    .data-section { margin-bottom: 20px; }
+    .data-section h3 { font-size: 13px; font-weight: 600; color: #484f58; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .data-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+    .data-card {
+      padding: 12px; background: #161822; border: 1px solid #21262d; border-radius: 8px;
+      cursor: pointer; transition: border-color 0.15s;
+    }
+    .data-card:hover { border-color: #58a6ff; }
+    .data-card .card-title { font-size: 14px; font-weight: 600; color: #c9d1d9; margin-bottom: 2px; }
+    .data-card .card-desc { font-size: 11px; color: #484f58; line-height: 1.3; }
+
+    .upload-area {
+      border: 2px dashed #21262d; border-radius: 8px; padding: 20px; text-align: center;
+      color: #484f58; font-size: 13px; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+    }
+    .upload-area:hover, .upload-area.drag-over { border-color: #58a6ff; color: #58a6ff; }
+    .upload-area input[type="file"] { display: none; }
+
+    /* Cell */
+    .cell {
+      border: 1px solid #21262d; border-radius: 8px; margin-bottom: 12px;
+      background: #161822; transition: border-color 0.15s;
+    }
+    .cell:hover { border-color: #30363d; }
+    .cell.focused { border-color: #58a6ff; }
+    .cell.running { border-color: #d29922; }
+
+    .cell-toolbar {
+      display: flex; align-items: center; gap: 6px; padding: 4px 8px;
+      border-bottom: 1px solid #21262d; font-size: 11px; color: #484f58;
+    }
+    .cell-toolbar .cell-index { font-family: monospace; color: #484f58; min-width: 32px; }
+    .cell-type-toggle {
+      padding: 2px 8px; font-size: 11px; background: transparent;
+      border: 1px solid #30363d; border-radius: 4px; color: #8b949e; cursor: pointer; font-family: monospace;
+    }
+    .cell-type-toggle:hover { color: #c9d1d9; }
+    .cell-type-toggle.ask { color: #d2a8ff; border-color: #6e40c9; }
+    .cell-toolbar .spacer { flex: 1; }
+    .cell-toolbar button {
+      padding: 2px 8px; font-size: 11px; background: transparent;
+      border: 1px solid transparent; border-radius: 4px; color: #484f58; cursor: pointer;
+    }
+    .cell-toolbar button:hover { color: #c9d1d9; border-color: #30363d; }
+    .cell-toolbar .run-btn { color: #3fb950; }
+    .cell-toolbar .run-btn:hover { color: #56d364; }
+    .cell-toolbar .delete-btn:hover { color: #f85149; }
+
+    .cell-input {
+      width: 100%; padding: 10px 14px;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 13px; line-height: 1.6; background: transparent;
+      border: none; color: #e6edf3; resize: none; outline: none;
+      min-height: 38px; overflow: hidden;
+    }
+    .cell.ask .cell-input { color: #d2a8ff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .cell-input::placeholder { color: #30363d; }
+
+    .cell-output {
+      border-top: 1px solid #21262d; padding: 10px 14px; font-family: monospace;
+      font-size: 12px; line-height: 1.5; display: none; max-height: 500px; overflow-y: auto;
+    }
+    .cell-output.has-output { display: block; }
+    .cell-output .stdout { color: #c9d1d9; white-space: pre-wrap; word-break: break-all; }
+    .cell-output .stderr { color: #d29922; white-space: pre-wrap; }
+    .cell-output .error { color: #f85149; white-space: pre-wrap; word-break: break-all; }
+    .cell-output .result { color: #3fb950; white-space: pre-wrap; }
+    .cell-output .generated-code {
+      background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
+      padding: 8px 12px; margin-bottom: 8px; color: #e6edf3; white-space: pre-wrap; font-size: 12px;
+    }
+    .cell-output .llm-note { color: #8b949e; font-style: italic; font-size: 11px; margin-bottom: 6px; }
+
+    .cell-output .df-output { margin: 6px 0; overflow-x: auto; }
+    .df-table { border-collapse: collapse; font-size: 12px; font-family: monospace; }
+    .df-table th { background: #161822; color: #58a6ff; padding: 4px 10px; border: 1px solid #21262d; text-align: left; font-weight: 600; }
+    .df-table td { padding: 4px 10px; border: 1px solid #21262d; color: #c9d1d9; }
+    .df-table tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+    .df-table tr:hover td { background: rgba(88,166,255,0.06); }
+
+    #add-cell-btn {
+      display: block; width: 100%; padding: 10px; background: transparent;
+      border: 1px dashed #21262d; border-radius: 8px; color: #484f58; font-size: 13px;
+      cursor: pointer; transition: border-color 0.15s, color 0.15s;
+    }
+    #add-cell-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+    .hint { text-align: center; padding: 12px; color: #30363d; font-size: 11px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="left">
+      <h1>pyreplab <span>notebook</span></h1>
+      <span id="status" class="loading">loading...</span>
+    </div>
+    <div class="header-actions">
+      <button id="new-btn" title="New notebook">New</button>
+      <button id="add-top-btn" title="Add cell">+ Cell</button>
+    </div>
+  </header>
+
+  <!-- Landing: data picker -->
+  <div id="landing">
+    <h2>Choose your data</h2>
+    <p class="subtitle">Pick a dataset to start exploring, or upload your own CSV/JSON file.</p>
+
+    <div class="data-grid" id="data-grid"></div>
+
+    <div class="upload-area" id="upload-area">
+      Drop CSV, JSON, or TSV file here — or click to browse
+      <input type="file" id="file-input" accept=".csv,.json,.jsonl,.tsv,.xlsx,.xls">
+    </div>
+  </div>
+
+  <!-- Notebook: hidden until data is loaded -->
+  <div id="notebook" class="hidden"></div>
+
+  <script src="main.js"></script>
+  <script>
+    // --- Curated datasets ---
+    const DATASETS = {
+      'Markets': [
+        { title: 'NVDA', desc: 'NVIDIA (1 year)', code: "df = await load_ticker('NVDA')", ask: 'what is the price trend?' },
+        { title: 'AAPL', desc: 'Apple (1 year)', code: "df = await load_ticker('AAPL')", ask: 'show monthly average closing price' },
+        { title: 'TSLA', desc: 'Tesla (1 year)', code: "df = await load_ticker('TSLA')", ask: 'what was the most volatile month?' },
+        { title: 'MSFT', desc: 'Microsoft (1 year)', code: "df = await load_ticker('MSFT')", ask: 'compare high vs low spread' },
+        { title: 'S&P 500', desc: 'Index (1 year)', code: "df = await load_ticker('^GSPC')", ask: 'what is the YTD return?' },
+        { title: 'Gold', desc: 'Gold futures (1 year)', code: "df = await load_ticker('GC=F')", ask: 'plot gold price over time' },
+      ],
+      'Crypto': [
+        { title: 'BTC', desc: 'Bitcoin (1 year)', code: "df = await load_ticker('BTC')", ask: 'plot the closing price' },
+        { title: 'ETH', desc: 'Ethereum (1 year)', code: "df = await load_ticker('ETH')", ask: 'what is the trend?' },
+        { title: 'SOL', desc: 'Solana (1 year)', code: "df = await load_ticker('SOL')", ask: 'how volatile is it compared to BTC?' },
+        { title: 'DOGE', desc: 'Dogecoin (1 year)', code: "df = await load_ticker('DOGE')", ask: 'show the biggest daily moves' },
+        { title: 'XRP', desc: 'Ripple (1 year)', code: "df = await load_ticker('XRP')", ask: 'what is the price range?' },
+        { title: 'ADA', desc: 'Cardano (1 year)', code: "df = await load_ticker('ADA-USD')", ask: 'plot the volume over time' },
+      ],
+      'Classic ML': [
+        { title: 'Titanic', desc: 'Passenger survival data (891 rows)', code: "df = await load_url('https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv')", ask: 'what factors predicted survival?' },
+        { title: 'Iris', desc: 'Flower species measurements (150 rows)', code: "df = await load_url('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/iris.csv')", ask: 'how do the species differ in petal size?' },
+        { title: 'Penguins', desc: 'Palmer penguins body measurements (344 rows)', code: "df = await load_url('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/penguins.csv')", ask: 'compare body mass across species' },
+        { title: 'MPG', desc: 'Car fuel efficiency (398 rows)', code: "df = await load_url('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/mpg.csv')", ask: 'how has MPG changed over model years?' },
+        { title: 'Diamonds', desc: 'Diamond prices & attributes (53,940 rows)', code: "df = await load_url('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/diamonds.csv')", ask: 'what drives diamond price the most?' },
+      ],
+      'Real World': [
+        { title: 'Tips', desc: 'Restaurant tipping data (244 rows)', code: "df = await load_url('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/tips.csv')", ask: 'do smokers tip more or less?' },
+        { title: 'Flights', desc: 'Monthly airline passengers (144 rows)', code: "df = await load_url('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/flights.csv')", ask: 'plot the seasonal pattern' },
+        { title: 'CO2 Levels', desc: 'Mauna Loa monthly CO2 (1958-present)', code: "df = await load_url('https://raw.githubusercontent.com/datasets/co2-ppm/main/data/co2-mm-mlo.csv')", ask: 'plot the CO2 trend over time' },
+        { title: 'World Population', desc: 'Country populations over time', code: "df = await load_url('https://raw.githubusercontent.com/datasets/population/main/data/population.csv')", ask: 'which countries grew the fastest?' },
+      ],
+    };
+
+    // --- State ---
+    const notebook = document.getElementById('notebook');
+    const landing = document.getElementById('landing');
+    const statusEl = document.getElementById('status');
+    const dataGrid = document.getElementById('data-grid');
+    const uploadArea = document.getElementById('upload-area');
+    const fileInput = document.getElementById('file-input');
+    let ready = false;
+    let cellCounter = 0;
+    let runningCell = null;
+
+    // --- Render grouped data cards ---
+    Object.entries(DATASETS).forEach(([group, items]) => {
+      const section = document.createElement('div');
+      section.className = 'data-section';
+      section.innerHTML = `<h3>${group}</h3>`;
+      const grid = document.createElement('div');
+      grid.className = 'data-grid';
+      items.forEach(ds => {
+        const card = document.createElement('div');
+        card.className = 'data-card';
+        card.innerHTML = `<div class="card-title">${ds.title}</div><div class="card-desc">${ds.desc}</div>`;
+        card.addEventListener('click', () => {
+          if (!ready) return;
+          startNotebook(ds.code, ds.ask);
+        });
+        grid.appendChild(card);
+      });
+      section.appendChild(grid);
+      dataGrid.appendChild(section);
+    });
+
+    // --- File upload ---
+    uploadArea.addEventListener('click', () => fileInput.click());
+    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('drag-over');
+      if (e.dataTransfer.files.length) handleFileUpload(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length) handleFileUpload(fileInput.files[0]);
+      fileInput.value = '';
+    });
+
+    function handleFileUpload(file) {
+      if (!ready) return;
+      const name = file.name.replace(/[^a-zA-Z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase();
+      const varName = name.replace(/\.(csv|json|jsonl|tsv|xlsx|xls)$/i, '') || 'uploaded';
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = reader.result;
+        const ext = file.name.split('.').pop().toLowerCase();
+        let code;
+        if (ext === 'json' || ext === 'jsonl') {
+          code = `import json as _json\n_data = _json.loads(${JSON.stringify(text)})\nif isinstance(_data, list):\n    ${varName} = pd.DataFrame(_data)\nelse:\n    ${varName} = pd.DataFrame([_data] if isinstance(_data, dict) else {'value': [_data]})\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
+        } else {
+          const sep = ext === 'tsv' ? "\\t" : ",";
+          code = `import io as _io\n${varName} = pd.read_csv(_io.StringIO(${JSON.stringify(text)}), sep="${sep}")\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
+        }
+        startNotebook(code, `describe the ${varName} data`);
+      };
+      reader.readAsText(file);
+    }
+
+    // --- Transition from landing to notebook ---
+    function startNotebook(loadCode, firstQuestion) {
+      landing.classList.add('hidden');
+      notebook.classList.remove('hidden');
+      notebook.innerHTML = '';
+
+      // Load data cell
+      const loadCell = addCell('code', loadCode);
+
+      // First question cell
+      addCell('ask', firstQuestion || '');
+
+      // Bottom controls
+      const addBtnEl = document.createElement('button');
+      addBtnEl.id = 'add-cell-btn';
+      addBtnEl.textContent = '+ Add cell';
+      addBtnEl.addEventListener('click', () => {
+        const cell = addCell('ask');
+        cell.querySelector('.cell-input').focus();
+      });
+      notebook.appendChild(addBtnEl);
+
+      const hint = document.createElement('div');
+      hint.className = 'hint';
+      hint.textContent = 'Enter to run ask cells | Shift+Enter for code cells | auto-advances to next cell';
+      notebook.appendChild(hint);
+
+      // Auto-resize all textareas
+      notebook.querySelectorAll('.cell-input').forEach(ta => {
+        ta.dispatchEvent(new Event('input'));
+      });
+
+      // Auto-run the load cell
+      setTimeout(() => runCell(loadCell), 100);
+    }
+
+    // --- "New" button: reset to landing ---
+    document.getElementById('new-btn').addEventListener('click', () => {
+      notebook.classList.add('hidden');
+      notebook.innerHTML = '';
+      landing.classList.remove('hidden');
+      cellCounter = 0;
+    });
+
+    // --- "+ Cell" button ---
+    document.getElementById('add-top-btn').addEventListener('click', () => {
+      if (notebook.classList.contains('hidden')) return;
+      const cell = addCell('ask');
+      cell.querySelector('.cell-input').focus();
+    });
+
+    // --- Cell management ---
+    function createCell(type, code) {
+      type = type || 'ask';
+      const idx = ++cellCounter;
+      const cell = document.createElement('div');
+      cell.className = `cell ${type}`;
+      cell.dataset.type = type;
+      cell.dataset.idx = idx;
+      cell.innerHTML = `
+        <div class="cell-toolbar">
+          <span class="cell-index">[${idx}]</span>
+          <button class="cell-type-toggle ${type === 'ask' ? 'ask' : ''}">${type === 'ask' ? 'ask' : 'python'}</button>
+          <span class="spacer"></span>
+          <button class="run-btn" title="Run (Shift+Enter)">run</button>
+          <button class="delete-btn" title="Delete cell">delete</button>
+        </div>
+        <textarea class="cell-input" placeholder="${type === 'ask' ? 'Ask a question about your data...' : 'Python code...'}" rows="1">${code || ''}</textarea>
+        <div class="cell-output"></div>
+      `;
+
+      const textarea = cell.querySelector('.cell-input');
+      const toggleBtn = cell.querySelector('.cell-type-toggle');
+      const runBtn = cell.querySelector('.run-btn');
+      const deleteBtn = cell.querySelector('.delete-btn');
+
+      function autoResize() {
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
+      }
+      textarea.addEventListener('input', autoResize);
+      setTimeout(autoResize, 0);
+
+      textarea.addEventListener('focus', () => {
+        document.querySelectorAll('.cell').forEach(c => c.classList.remove('focused'));
+        cell.classList.add('focused');
+      });
+
+      toggleBtn.addEventListener('click', () => {
+        const newType = cell.dataset.type === 'code' ? 'ask' : 'code';
+        cell.dataset.type = newType;
+        cell.className = `cell ${newType}`;
+        toggleBtn.textContent = newType === 'ask' ? 'ask' : 'python';
+        toggleBtn.className = `cell-type-toggle ${newType === 'ask' ? 'ask' : ''}`;
+        textarea.placeholder = newType === 'ask' ? 'Ask a question about your data...' : 'Python code...';
+      });
+
+      runBtn.addEventListener('click', () => runCell(cell));
+
+      deleteBtn.addEventListener('click', () => {
+        if (notebook.querySelectorAll('.cell').length > 1) cell.remove();
+      });
+
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.shiftKey || e.ctrlKey)) {
+          e.preventDefault();
+          runCell(cell);
+          return;
+        }
+        if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && cell.dataset.type === 'ask') {
+          e.preventDefault();
+          runCell(cell);
+          return;
+        }
+        if (e.key === 'Tab' && cell.dataset.type === 'code') {
+          e.preventDefault();
+          const start = textarea.selectionStart;
+          const end = textarea.selectionEnd;
+          textarea.value = textarea.value.substring(0, start) + '    ' + textarea.value.substring(end);
+          textarea.selectionStart = textarea.selectionEnd = start + 4;
+          autoResize();
+        }
+      });
+
+      return cell;
+    }
+
+    function addCell(type, code) {
+      const cell = createCell(type, code);
+      const addBtn = document.getElementById('add-cell-btn');
+      if (addBtn) {
+        notebook.insertBefore(cell, addBtn);
+      } else {
+        notebook.appendChild(cell);
+      }
+      return cell;
+    }
+
+    // --- Run cell ---
+    async function runCell(cell) {
+      if (!ready || runningCell) return;
+      const code = cell.querySelector('.cell-input').value.trim();
+      if (!code) return;
+
+      runningCell = cell;
+      cell.classList.add('running');
+      statusEl.textContent = 'running';
+      statusEl.className = 'running';
+      const output = cell.querySelector('.cell-output');
+      output.innerHTML = '';
+      output.classList.remove('has-output');
+
+      if (cell.dataset.type === 'ask') {
+        await runAskCell(cell, code, output);
+      } else {
+        await runCodeCell(cell, code, output);
+      }
+    }
+
+    function runCodeCell(cell, code, output) {
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          showResult(output, { error: 'Execution timed out (30s)' });
+          finishCell(cell);
+          resolve();
+        }, 35000);
+        window.onPyreplabResult = function(result) {
+          clearTimeout(timeout);
+          showResult(output, result);
+          finishCell(cell);
+          resolve();
+        };
+        window.runInPyreplab(code);
+      });
+    }
+
+    async function runAskCell(cell, query, output) {
+      const apiKey = (document.getElementById('openrouter-key') || {}).value || '';
+
+      output.classList.add('has-output');
+      output.innerHTML = '<span class="llm-note">generating code...</span>';
+
+      const { namespace: nsSummary, recentTurns } = await getContext();
+      console.log('[ask] context:', nsSummary.length, 'ns items,', recentTurns.length, 'turns');
+
+      try {
+        const resp = await fetch('/api/openrouter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: apiKey.trim(), query, namespace: nsSummary, recentTurns })
+        });
+        const data = await resp.json();
+
+        if (data.error) {
+          showResult(output, { error: data.error });
+          finishCell(cell);
+          return;
+        }
+
+        const generatedCode = data.code || '';
+        output.innerHTML = '';
+
+        if (data.title) {
+          const titleEl = document.createElement('span');
+          titleEl.className = 'llm-note';
+          titleEl.textContent = data.title;
+          output.appendChild(titleEl);
+        }
+
+        const codeBlock = document.createElement('div');
+        codeBlock.className = 'generated-code';
+        codeBlock.textContent = generatedCode;
+        output.appendChild(codeBlock);
+        output.classList.add('has-output');
+
+        await new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            showResult(output, { error: 'Execution timed out (30s)' }, true);
+            finishCell(cell);
+            resolve();
+          }, 35000);
+          window.onPyreplabResult = function(result) {
+            clearTimeout(timeout);
+            showResult(output, result, true);
+            finishCell(cell);
+            resolve();
+          };
+          window.runInPyreplab(generatedCode, true);
+        });
+
+      } catch (err) {
+        showResult(output, { error: err.message });
+        finishCell(cell);
+      }
+    }
+
+    function getContext() {
+      // Read cached context — updated automatically after every cell execution
+      try {
+        const data = window._lastContext || '{"namespace":[],"recentTurns":[]}';
+        const parsed = JSON.parse(typeof data === 'string' ? data : String(data));
+        return Promise.resolve({
+          namespace: parsed.namespace || [],
+          recentTurns: parsed.recentTurns || [],
+        });
+      } catch {
+        return Promise.resolve({ namespace: [], recentTurns: [] });
+      }
+    }
+
+    function showResult(output, result, append) {
+      if (!append) output.innerHTML = '';
+      output.classList.add('has-output');
+      if (result.stdout) appendOutput(output, result.stdout, 'stdout');
+      if (result.stderr) appendOutput(output, result.stderr, 'stderr');
+      if (result.html) {
+        const div = document.createElement('div');
+        div.className = 'df-output';
+        div.innerHTML = result.html;
+        output.appendChild(div);
+      }
+      if (result.result) appendOutput(output, result.result, 'result');
+      if (result.error) appendOutput(output, result.error, 'error');
+    }
+
+    function appendOutput(parent, text, cls) {
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = text;
+      parent.appendChild(span);
+    }
+
+    function finishCell(cell) {
+      cell.classList.remove('running');
+      runningCell = null;
+      statusEl.textContent = 'idle';
+      statusEl.className = 'idle';
+
+      const cells = Array.from(notebook.querySelectorAll('.cell'));
+      const idx = cells.indexOf(cell);
+      if (idx >= 0 && idx < cells.length - 1) {
+        const next = cells[idx + 1];
+        next.querySelector('.cell-input').focus();
+      } else {
+        const newCell = addCell('ask');
+        newCell.querySelector('.cell-input').focus();
+      }
+    }
+
+    // --- Worker ready ---
+    window.onPyreplabReady = function() {
+      ready = true;
+      statusEl.textContent = 'idle';
+      statusEl.className = 'idle';
+    };
+  </script>
+</body>
+</html>

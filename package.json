@@ -1,0 +1,12 @@
+{
+  "name": "pyodide-repl",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Browser-based Python REPL via Pyodide, commanded by agents over WebSocket",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
