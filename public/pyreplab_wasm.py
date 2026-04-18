@@ -304,8 +304,11 @@ def _df_to_html(obj):
 
 def _capture_plots():
     """Capture any open matplotlib figures as base64 PNG images.
+    matplotlib is loaded lazily on first import — not at startup.
     Returns HTML string with <img> tags, or empty string."""
     try:
+        if 'matplotlib' not in sys.modules and 'matplotlib.pyplot' not in sys.modules:
+            return ""
         import matplotlib
         matplotlib.use('agg')
         import matplotlib.pyplot as plt

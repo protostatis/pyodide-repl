@@ -475,8 +475,8 @@ async function init() {
     stderr: (line) => postMessage({ type: "stderr", data: line + "\n" }),
   });
 
-  // Load micropip + pandas + matplotlib
-  await pyodide.loadPackage(["micropip", "pandas", "matplotlib"]);
+  // Load micropip + pandas (matplotlib loads lazily on first plot)
+  await pyodide.loadPackage(["micropip", "pandas"]);
 
   if (interruptBuffer) {
     pyodide.setInterruptBuffer(interruptBuffer);

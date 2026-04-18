@@ -234,7 +234,13 @@
         card.className = 'data-card';
         card.innerHTML = `<div class="card-title">${ds.title}</div><div class="card-desc">${ds.desc}</div>`;
         card.addEventListener('click', () => {
-          if (!ready) return;
+          if (!ready) {
+            // Queue the selection — start notebook when ready
+            window._pendingStart = { code: ds.code, ask: ds.ask };
+            statusEl.textContent = 'loading...';
+            card.style.borderColor = '#d29922';
+            return;
+          }
           startNotebook(ds.code, ds.ask);
         });
         grid.appendChild(card);
@@ -258,7 +264,12 @@
     });
 
     function handleFileUpload(file) {
-      if (!ready) return;
+      if (!ready) {
+        // Queue file — process when ready
+        window._pendingFile = file;
+        statusEl.textContent = 'loading...';
+        return;
+      }
       const name = file.name.replace(/[^a-zA-Z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase();
       const varName = name.replace(/\.(csv|json|jsonl|tsv|xlsx|xls)$/i, '') || 'uploaded';
       const ext = file.name.split('.').pop().toLowerCase();
@@ -608,6 +619,16 @@
       ready = true;
       statusEl.textContent = 'idle';
       statusEl.className = 'idle';
+      // If user clicked a dataset while loading, start now
+      if (window._pendingStart) {
+        const { code, ask } = window._pendingStart;
+        window._pendingStart = null;
+        startNotebook(code, ask);
+      } else if (window._pendingFile) {
+        const f = window._pendingFile;
+        window._pendingFile = null;
+        handleFileUpload(f);
+      }
     };
   </script>
 </body>
