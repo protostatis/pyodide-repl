@@ -249,14 +249,22 @@ Rules:
     }
 
     function parseResponse(result) {
-      if (result.error) return null;
+      if (result.error) {
+        console.log(`[openrouter] API error: ${JSON.stringify(result.error).substring(0, 200)}`);
+        return null;
+      }
       const content = result.choices?.[0]?.message?.content || "";
       if (!content) return null;
       try {
-        return JSON.parse(content);
+        const parsed = JSON.parse(content);
+        // Validate it has a code field that looks like Python
+        if (!parsed.code || parsed.code.length < 3) return null;
+        return parsed;
       } catch {
         const fenceMatch = content.match(/```python\n([\s\S]*?)```/);
-        return { code: fenceMatch ? fenceMatch[1] : content, title: "Generated" };
+        if (fenceMatch) return { code: fenceMatch[1], title: "Generated" };
+        // Don't treat arbitrary text as code
+        return null;
       }
     }
 
