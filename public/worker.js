@@ -526,7 +526,9 @@ self.onmessage = async (e) => {
   const msg = e.data;
 
   if (msg.type === "init") {
-    interruptBuffer = new Int32Array(msg.interruptBuffer);
+    if (msg.interruptBuffer) {
+      interruptBuffer = new Int32Array(msg.interruptBuffer);
+    }
     await init();
     return;
   }

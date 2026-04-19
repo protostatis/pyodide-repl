@@ -11,10 +11,16 @@ function appendLog(text, cls) {
   log.scrollTop = log.scrollHeight;
 }
 
-// --- SharedArrayBuffer for interrupt support ---
+// --- SharedArrayBuffer for interrupt support (optional — degrades on mobile) ---
 
-const interruptBuffer = new SharedArrayBuffer(4);
-const interruptArray = new Int32Array(interruptBuffer);
+let interruptBuffer = null;
+let interruptArray = null;
+try {
+  interruptBuffer = new SharedArrayBuffer(4);
+  interruptArray = new Int32Array(interruptBuffer);
+} catch (e) {
+  console.warn("[pyreplab] SharedArrayBuffer not available — interrupt disabled");
+}
 
 // --- Spawn Pyodide WebWorker ---
 
@@ -116,7 +122,7 @@ worker.onerror = (e) => {
 };
 
 // Initialize worker
-worker.postMessage({ type: "init", interruptBuffer });
+worker.postMessage({ type: "init", interruptBuffer: interruptBuffer || undefined });
 
 // --- Local execution (browser UI typing Python directly) ---
 
