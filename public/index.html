@@ -297,16 +297,17 @@
         };
         reader.readAsArrayBuffer(file);
       } else {
-        // Text formats: CSV, JSON, TSV
+        // Text formats: CSV, JSON, TSV — write to Pyodide FS like Excel
         const reader = new FileReader();
         reader.onload = () => {
-          const text = reader.result;
+          window._pendingFileText = reader.result;
+          window._pendingFileName = file.name;
           let code;
           if (ext === 'json' || ext === 'jsonl') {
-            code = `import json as _json\n_data = _json.loads(${JSON.stringify(text)})\nif isinstance(_data, list):\n    ${varName} = pd.DataFrame(_data)\nelse:\n    ${varName} = pd.DataFrame([_data] if isinstance(_data, dict) else {'value': [_data]})\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
+            code = `import json as _json\nwith open("/tmp/${file.name}") as _f:\n    _data = _json.loads(_f.read())\nif isinstance(_data, list):\n    ${varName} = pd.DataFrame(_data)\nelse:\n    ${varName} = pd.DataFrame([_data] if isinstance(_data, dict) else {'value': [_data]})\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
           } else {
-            const sep = ext === 'tsv' ? "\\t" : ",";
-            code = `import io as _io\n${varName} = pd.read_csv(_io.StringIO(${JSON.stringify(text)}), sep="${sep}")\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
+            const sep = ext === 'tsv' ? "\\\\t" : ",";
+            code = `${varName} = pd.read_csv("/tmp/${file.name}", sep="${sep}")\nprint(f"loaded ${varName}: {${varName}.shape[0]} rows x {${varName}.shape[1]} cols")\n${varName}.head()`;
           }
           startNotebook(code, `describe the ${varName} data`);
         };

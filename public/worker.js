@@ -573,9 +573,12 @@ self.onmessage = async (e) => {
       }
     }, EXEC_TIMEOUT_MS);
 
-    // Write Excel file to Pyodide FS if provided
+    // Write uploaded files to Pyodide FS if provided
     if (msg.excelBytes && msg.excelName) {
       pyodide.FS.writeFile(`/tmp/${msg.excelName}`, msg.excelBytes);
+    }
+    if (msg.fileText && msg.fileName) {
+      pyodide.FS.writeFile(`/tmp/${msg.fileName}`, msg.fileText);
     }
 
     try {
