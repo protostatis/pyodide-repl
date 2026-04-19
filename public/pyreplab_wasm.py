@@ -468,7 +468,9 @@ async def run_code(code, max_output=100_000, label="", is_llm=False):
                         if m:
                             mod_name = m.group(1)
                 pkg_name = _PKG_MAP.get(mod_name, mod_name)
-                if not pkg_name or pkg_name in installed:
+                # Skip Pyodide internals and already-installed packages
+                _SKIP = {'js', 'pyodide', 'pyodide_js', 'pyodide_http', '_pyodide'}
+                if not pkg_name or pkg_name in installed or pkg_name in _SKIP:
                     return traceback.format_exc()
                 installed.add(pkg_name)
                 try:
@@ -480,6 +482,10 @@ async def run_code(code, max_output=100_000, label="", is_llm=False):
                         if 'matplotlib' in (mod_name, pkg_name):
                             import matplotlib
                             matplotlib.use('agg')
+                            # Clear poisoned module cache from failed wasm_backend import
+                            for key in list(sys.modules.keys()):
+                                if 'matplotlib_pyodide' in key:
+                                    del sys.modules[key]
                     else:
                         import micropip
                         await micropip.install(pkg_name)
