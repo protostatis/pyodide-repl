@@ -585,9 +585,10 @@ self.onmessage = async (e) => {
 
     try {
       const escapedCode = JSON.stringify(msg.code);
+      const escapedQuery = JSON.stringify(msg.query || "");
       const isLlm = msg.isLlm ? "True" : "False";
       const pyResult = await pyodide.runPythonAsync(
-        `from pyreplab_wasm import run_code; import json; json.dumps(await run_code(${escapedCode}, is_llm=${isLlm}))`
+        `from pyreplab_wasm import run_code; import json; json.dumps(await run_code(${escapedCode}, is_llm=${isLlm}, label=${escapedQuery}))`
       );
       clearTimeout(timeoutId);
       const result = JSON.parse(pyResult);

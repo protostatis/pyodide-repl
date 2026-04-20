@@ -237,24 +237,56 @@ def _namespace_summary():
 # 5. RECENT TURN HISTORY — for LLM context
 # ============================================================
 
-def _recent_turns(limit=8):
-    """Return recent turn history for LLM context. Truncated for token budget."""
+def _recent_turns(limit=50, max_total_chars=12000, max_single_output=2000):
+    """Return recent turn history for LLM context.
+
+    Includes ALL turns (up to limit) as long as the total stays within
+    max_total_chars.  Individual outputs larger than max_single_output
+    are summarised to avoid one huge cell blowing the budget.
+
+    Walks backwards (newest first) so the most recent context always
+    wins, then reverses to chronological order before returning.
+    """
     recent = _history[-limit:]
     turns = []
-    for t in recent:
-        turn = {"code": t["code"][:500]}
+    budget = max_total_chars
+
+    # Walk backwards so newest turns get priority
+    for t in reversed(recent):
+        code = t["code"][:800]
+        output = ""
         if t.get("stdout"):
-            turn["output"] = t["stdout"][:300]
+            out = t["stdout"]
+            if len(out) > max_single_output:
+                # Keep head + tail so the LLM sees the shape
+                output = out[:max_single_output // 2] + "\n...(truncated)...\n" + out[-500:]
+            else:
+                output = out
+        error = ""
         if t.get("error"):
             err = t["error"]
-            # Keep the last line (actual error message) + truncated traceback
             lines = err.strip().splitlines()
             last_line = lines[-1] if lines else ""
-            if len(err) > 300:
-                turn["error"] = err[:150] + "\n...\n" + last_line
+            if len(err) > 500:
+                error = err[:250] + "\n...\n" + last_line
             else:
-                turn["error"] = err
+                error = err
+
+        entry_size = len(code) + len(output) + len(error)
+        if budget - entry_size < 0 and turns:
+            break  # no room — stop adding older turns
+
+        turn = {"code": code}
+        if t.get("label"):
+            turn["question"] = t["label"][:200]
+        if output:
+            turn["output"] = output
+        if error:
+            turn["error"] = error
         turns.append(turn)
+        budget -= entry_size
+
+    turns.reverse()  # chronological order
     return turns
 
 
@@ -691,12 +723,12 @@ _namespace["load_url"] = load_url
 _namespace["load_csv"] = load_csv
 
 
-def _get_context(limit=8):
+def _get_context():
     """Return namespace summary + recent turns as JSON string.
     Lightweight — does NOT go through run_code, does NOT pollute history."""
     return json.dumps({
         "namespace": _namespace_summary(),
-        "recentTurns": _recent_turns(limit),
+        "recentTurns": _recent_turns(),
     })
 
 

@@ -611,7 +611,7 @@
             clearTimeout(timeout);
             resolve(result);
           };
-          window.runInPyreplab(generatedCode, true);
+          window.runInPyreplab(generatedCode, true, query);
         });
         showResult(output, execResult, true);
 

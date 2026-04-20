@@ -126,7 +126,7 @@ worker.postMessage({ type: "init", interruptBuffer: interruptBuffer || undefined
 
 // --- Local execution (browser UI typing Python directly) ---
 
-window.runInPyreplab = function(code, isLlm) {
+window.runInPyreplab = function(code, isLlm, query) {
   if (interruptBuffer) {
     Atomics.store(interruptArray, 0, 0);
   }
@@ -139,7 +139,7 @@ window.runInPyreplab = function(code, isLlm) {
   window._pendingExcelName = null;
   window._pendingFileText = null;
   window._pendingFileName = null;
-  worker.postMessage({ type: "local-run", code, isLlm: !!isLlm, excelBytes, excelName, fileText, fileName });
+  worker.postMessage({ type: "local-run", code, isLlm: !!isLlm, query: query || "", excelBytes, excelName, fileText, fileName });
 };
 
 // --- Local pip install (browser UI) ---
