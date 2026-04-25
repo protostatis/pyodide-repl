@@ -185,7 +185,7 @@
   <!-- Notebook: hidden until data is loaded -->
   <div id="notebook" class="hidden"></div>
 
-  <script src="main.js"></script>
+  <script src="/main.js"></script>
   <script>
     // --- Curated datasets ---
     const DATASETS = {
@@ -391,6 +391,27 @@
     }
 
     // --- Save notebook to slug ---
+    async function copyShareUrl(url) {
+      try {
+        await navigator.clipboard.writeText(url);
+        return true;
+      } catch {}
+
+      const textarea = document.createElement('textarea');
+      textarea.value = url;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      let copied = false;
+      try {
+        copied = document.execCommand('copy');
+      } catch {}
+      textarea.remove();
+      return copied;
+    }
+
     async function saveNotebook() {
       const cells = Array.from(notebook.querySelectorAll('.cell')).map(cell => {
         const code = cell.querySelector('.cell-input').value;
@@ -409,9 +430,11 @@
         const data = await resp.json();
         if (data.slug) {
           const url = `${location.origin}/s/${data.slug}`;
-          await navigator.clipboard.writeText(url);
+          const copied = await copyShareUrl(url);
+          history.replaceState(null, '', `/s/${data.slug}`);
           const btn = document.getElementById('save-btn');
-          btn.textContent = 'Copied!';
+          btn.title = url;
+          btn.textContent = copied ? 'Copied!' : 'Saved';
           setTimeout(() => { btn.textContent = 'Share'; }, 2000);
         }
       } catch (err) {

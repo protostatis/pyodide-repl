@@ -1,13 +1,18 @@
 import { createServer } from "node:http";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join, extname } from "node:path";
+import { lookup } from "node:dns/promises";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { isIP } from "node:net";
+import { join, extname, resolve, relative, isAbsolute, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { WebSocketServer } from "ws";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC = join(__dirname, "public");
+const PUBLIC_ROOT = resolve(PUBLIC);
 const PORT = parseInt(process.env.PORT || "3000", 10);
+const MAX_PROXY_REDIRECTS = 5;
+const MAX_PROXY_RESPONSE_BYTES = 10 * 1024 * 1024;
 
 // Load .env file
 const envPath = join(__dirname, ".env");
@@ -36,6 +41,250 @@ const MIME = {
   ".css": "text/css",
   ".json": "application/json",
 };
+
+function makeHttpError(statusCode, message) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
+function resolvePublicFilePath(rawUrl) {
+  const pathname = rawUrl.split(/[?#]/, 1)[0] || "/";
+
+  let decodedPathname;
+  try {
+    decodedPathname = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+
+  if (decodedPathname.includes("\0")) return null;
+  const segments = decodedPathname.split("/").filter(Boolean);
+  if (segments.includes("..")) return null;
+
+  const requested = decodedPathname === "/" ? "index.html" : decodedPathname.replace(/^\/+/, "");
+  const filePath = resolve(PUBLIC_ROOT, requested);
+  const rel = relative(PUBLIC_ROOT, filePath);
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    return null;
+  }
+  return filePath;
+}
+
+function parseIpv4(address) {
+  const parts = address.split(".");
+  if (parts.length !== 4) return null;
+  const nums = parts.map((part) => {
+    if (!/^\d+$/.test(part)) return null;
+    const n = Number(part);
+    return n >= 0 && n <= 255 ? n : null;
+  });
+  if (nums.some((n) => n === null)) return null;
+  return nums[0] * 2 ** 24 + nums[1] * 2 ** 16 + nums[2] * 2 ** 8 + nums[3];
+}
+
+function parseIpv6(address) {
+  let value = address.toLowerCase();
+  if (value.startsWith("[") && value.endsWith("]")) value = value.slice(1, -1);
+  value = value.split("%", 1)[0];
+
+  if (value.includes(".")) {
+    const lastColon = value.lastIndexOf(":");
+    if (lastColon === -1) return null;
+    const ipv4 = parseIpv4(value.slice(lastColon + 1));
+    if (ipv4 === null) return null;
+    const hi = Math.floor(ipv4 / 2 ** 16).toString(16);
+    const lo = (ipv4 % 2 ** 16).toString(16);
+    value = `${value.slice(0, lastColon)}:${hi}:${lo}`;
+  }
+
+  const halves = value.split("::");
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  if (head.some((part) => !part) || tail.some((part) => !part)) return null;
+
+  const missing = 8 - head.length - tail.length;
+  if (missing < 0 || (halves.length === 1 && missing !== 0)) return null;
+
+  const hextets = [...head, ...Array(missing).fill("0"), ...tail];
+  let result = 0n;
+  for (const part of hextets) {
+    if (!/^[0-9a-f]{1,4}$/.test(part)) return null;
+    result = (result << 16n) + BigInt(parseInt(part, 16));
+  }
+  return result;
+}
+
+function ipv4InCidr(addressNum, baseAddress, prefixLength) {
+  const base = parseIpv4(baseAddress);
+  const blockSize = 2 ** (32 - prefixLength);
+  return Math.floor(addressNum / blockSize) === Math.floor(base / blockSize);
+}
+
+function ipv6InCidr(addressNum, baseAddress, prefixLength) {
+  const base = parseIpv6(baseAddress);
+  if (base === null) return false;
+  const shift = 128n - BigInt(prefixLength);
+  return (addressNum >> shift) === (base >> shift);
+}
+
+const BLOCKED_IPV4_CIDRS = [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.0.0.0", 24],
+  ["192.0.2.0", 24],
+  ["192.168.0.0", 16],
+  ["198.18.0.0", 15],
+  ["198.51.100.0", 24],
+  ["203.0.113.0", 24],
+  ["224.0.0.0", 4],
+  ["240.0.0.0", 4],
+  ["255.255.255.255", 32],
+];
+
+const BLOCKED_IPV6_CIDRS = [
+  ["::", 128],
+  ["::1", 128],
+  ["::ffff:0:0", 96],
+  ["64:ff9b::", 96],
+  ["100::", 64],
+  ["2001::", 32],
+  ["2001:db8::", 32],
+  ["2002::", 16],
+  ["fc00::", 7],
+  ["fe80::", 10],
+  ["ff00::", 8],
+];
+
+function normalizeHostname(hostname) {
+  let host = hostname.toLowerCase();
+  if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1);
+  return host.replace(/\.$/, "");
+}
+
+function isBlockedHostname(hostname) {
+  const host = normalizeHostname(hostname);
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "metadata.google.internal" ||
+    host === "instance-data" ||
+    host.endsWith(".local")
+  );
+}
+
+function isBlockedAddress(address) {
+  const normalized = normalizeHostname(address);
+  const version = isIP(normalized);
+  if (version === 4) {
+    const parsed = parseIpv4(normalized);
+    if (parsed === null) return true;
+    return BLOCKED_IPV4_CIDRS.some(([base, prefix]) => ipv4InCidr(parsed, base, prefix));
+  }
+  if (version === 6) {
+    const parsed = parseIpv6(normalized);
+    if (parsed === null) return true;
+    return BLOCKED_IPV6_CIDRS.some(([base, prefix]) => ipv6InCidr(parsed, base, prefix));
+  }
+  return true;
+}
+
+async function assertSafeProxyUrl(url) {
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw makeHttpError(400, "Only http and https URLs are supported");
+  }
+  if (url.username || url.password) {
+    throw makeHttpError(400, "URL credentials are not allowed");
+  }
+
+  const hostname = normalizeHostname(url.hostname);
+  if (!hostname || isBlockedHostname(hostname)) {
+    throw makeHttpError(403, "Blocked private or local target");
+  }
+
+  if (isIP(hostname)) {
+    if (isBlockedAddress(hostname)) {
+      throw makeHttpError(403, "Blocked private or local target");
+    }
+    return;
+  }
+
+  let addresses;
+  try {
+    addresses = await lookup(hostname, { all: true, verbatim: true });
+  } catch {
+    throw makeHttpError(400, "Unable to resolve target host");
+  }
+
+  if (!addresses.length || addresses.some(({ address }) => isBlockedAddress(address))) {
+    throw makeHttpError(403, "Blocked private or local target");
+  }
+}
+
+async function readLimitedText(response) {
+  const contentLength = Number(response.headers.get("content-length") || "0");
+  if (contentLength > MAX_PROXY_RESPONSE_BYTES) {
+    throw makeHttpError(413, "Proxy response is too large");
+  }
+
+  if (!response.body) {
+    return response.text();
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let total = 0;
+  let body = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_PROXY_RESPONSE_BYTES) {
+      throw makeHttpError(413, "Proxy response is too large");
+    }
+    body += decoder.decode(value, { stream: true });
+  }
+  body += decoder.decode();
+  return body;
+}
+
+async function fetchProxyUrl(rawTargetUrl) {
+  let currentUrl;
+  try {
+    currentUrl = new URL(rawTargetUrl);
+  } catch {
+    throw makeHttpError(400, "Invalid url parameter");
+  }
+
+  for (let redirectCount = 0; redirectCount <= MAX_PROXY_REDIRECTS; redirectCount++) {
+    await assertSafeProxyUrl(currentUrl);
+
+    const upstream = await fetch(currentUrl, {
+      headers: { "User-Agent": "pyreplab/1.0" },
+      redirect: "manual",
+    });
+
+    if (upstream.status >= 300 && upstream.status < 400) {
+      const location = upstream.headers.get("location");
+      if (!location) return { upstream, body: await readLimitedText(upstream) };
+      if (redirectCount === MAX_PROXY_REDIRECTS) {
+        throw makeHttpError(508, "Too many redirects");
+      }
+      currentUrl = new URL(location, currentUrl);
+      continue;
+    }
+
+    return { upstream, body: await readLimitedText(upstream) };
+  }
+
+  throw makeHttpError(508, "Too many redirects");
+}
 
 // --- HTTP: static files with COOP/COEP for SharedArrayBuffer ---
 
@@ -105,18 +354,15 @@ const server = createServer(async (req, res) => {
       return;
     }
     try {
-      const upstream = await fetch(targetUrl, {
-        headers: { "User-Agent": "pyreplab/1.0" },
-        redirect: "follow",
-      });
+      const { upstream, body } = await fetchProxyUrl(targetUrl);
       const contentType = upstream.headers.get("content-type") || "text/plain";
-      const body = await upstream.text();
       res.setHeader("Content-Type", contentType);
       res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
       res.writeHead(upstream.status);
       res.end(body);
     } catch (err) {
-      res.writeHead(502);
+      res.setHeader("Content-Type", "application/json");
+      res.writeHead(err.statusCode || 502);
       res.end(JSON.stringify({ error: err.message }));
     }
     return;
@@ -355,8 +601,14 @@ Rules:
     return;
   }
 
-  let filePath = join(PUBLIC, req.url === "/" ? "index.html" : req.url);
-  if (!existsSync(filePath)) {
+  const filePath = resolvePublicFilePath(req.url);
+  let fileIsReadable = false;
+  try {
+    fileIsReadable = !!filePath && existsSync(filePath) && statSync(filePath).isFile();
+  } catch {
+    fileIsReadable = false;
+  }
+  if (!fileIsReadable) {
     res.writeHead(404);
     res.end("Not found");
     return;
@@ -553,8 +805,17 @@ wssAgent.on("connection", (ws) => {
 
 // --- Start ---
 
-server.listen(PORT, () => {
-  console.log(`[server] listening on http://localhost:${PORT}`);
-  console.log(`[server] agent ws:    ws://localhost:${PORT}/agent`);
-  console.log(`[server] browser ws:  ws://localhost:${PORT}/browser`);
-});
+if (process.env.NODE_ENV !== "test") {
+  server.listen(PORT, () => {
+    console.log(`[server] listening on http://localhost:${PORT}`);
+    console.log(`[server] agent ws:    ws://localhost:${PORT}/agent`);
+    console.log(`[server] browser ws:  ws://localhost:${PORT}/browser`);
+  });
+}
+
+export {
+  assertSafeProxyUrl,
+  fetchProxyUrl,
+  isBlockedAddress,
+  resolvePublicFilePath,
+};
