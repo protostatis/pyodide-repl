@@ -543,8 +543,8 @@ Rules:
 - Use a dark style for plots: plt.style.use('dark_background')
 - Do NOT call plt.show() — plots are captured automatically after execution
 - Data loading helpers available in the namespace:
-  - await load_ticker(symbol, period) — stock/crypto prices → DataFrame (date, open, high, low, close, volume, symbol)
-    period: '1d','5d','1mo','3mo','6mo','1y','2y','5y','max'. Crypto: 'BTC' → 'BTC-USD', 'ETH' → 'ETH-USD'
+  - await load_ticker(symbol, period='max') — stock/crypto prices → DataFrame (date, open, high, low, close, volume, symbol)
+    period: '1d','5d','1mo','3mo','6mo','1y','2y','5y','max' (default: 'max'). Crypto: 'BTC' → 'BTC-USD', 'ETH' → 'ETH-USD'
   - await load_url(url, format=None) — fetch CSV/JSON/TSV from any URL → DataFrame (auto-detects format)
   - load_csv(text, sep=',') — parse CSV/TSV string directly → DataFrame
 - If the data needed is not in the namespace, write code that loads it using the helpers above

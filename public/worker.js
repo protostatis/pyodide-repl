@@ -412,7 +412,7 @@ def run_notebook(text, max_output=100_000):
 
 # --- Built-in data helpers (available in the REPL namespace) ---
 
-async def load_ticker(symbol, period="1y"):
+async def load_ticker(symbol, period="max"):
     """Fetch stock/crypto price history and return a pandas DataFrame.
 
     Uses Yahoo Finance v8 chart API via pyodide.http.fetch (browser fetch).
