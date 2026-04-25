@@ -64,6 +64,11 @@ OPENROUTER_FALLBACK_MODEL=openrouter/free
 
 Get a key at https://openrouter.ai/keys
 
+If notebook save/share becomes auth-gated, use the Unchained external auth
+contract in [docs/AUTH_FLOW.md](docs/AUTH_FLOW.md). The required provider-side
+shape is a one-time `code` plus `state` callback, not a bearer token in the
+callback URL.
+
 ## Data helpers
 
 Available in the notebook namespace:
