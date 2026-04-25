@@ -398,9 +398,11 @@ Rules:
 - If there's an error, explain what went wrong simply
 - Do NOT repeat the raw data — summarize it
 - Use plain language, not technical jargon
-- Return ONLY a JSON object: {"summary": "your interpretation here"}`;
+- Output plain text only, no JSON, no markdown headers`;
 
     const userMsg = `Question: ${query}\n\nCode:\n${code}\n\nOutput:\n${(output || "").substring(0, 1000)}${error ? "\n\nError:\n" + error.substring(0, 500) : ""}`;
+
+    const wantsStream = parsed.stream === true;
 
     try {
       const model = apiKey ? "google/gemini-2.0-flash-001" : OPENROUTER_MODEL;
@@ -417,25 +419,61 @@ Rules:
             { role: "system", content: systemPrompt },
             { role: "user", content: userMsg },
           ],
-          response_format: { type: "json_object" },
           temperature: 0.3,
           max_tokens: 200,
+          stream: wantsStream,
         }),
       });
-      const result = await upstream.json();
-      const content = result.choices?.[0]?.message?.content || "";
-      let summary = "";
-      try {
-        summary = JSON.parse(content).summary || "";
-      } catch {
-        summary = content;
+
+      if (wantsStream && upstream.body) {
+        // Proxy SSE stream as plain-text chunks of summary content
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.writeHead(200);
+
+        const reader = upstream.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split("\n");
+            buf = lines.pop() || "";
+            for (const raw of lines) {
+              const line = raw.trim();
+              if (!line.startsWith("data:")) continue;
+              const data = line.slice(5).trim();
+              if (data === "[DONE]") continue;
+              try {
+                const j = JSON.parse(data);
+                const delta = j.choices?.[0]?.delta?.content || "";
+                if (delta) res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+              } catch {}
+            }
+          }
+        } catch (err) {
+          // swallow — client will see end of stream
+        }
+        res.write(`data: [DONE]\n\n`);
+        res.end();
+        return;
       }
+
+      const result = await upstream.json();
+      const summary = result.choices?.[0]?.message?.content || "";
       res.setHeader("Content-Type", "application/json");
       res.writeHead(200);
       res.end(JSON.stringify({ summary }));
     } catch (err) {
-      res.writeHead(200);
-      res.end(JSON.stringify({ summary: "" }));
+      if (!res.headersSent) {
+        res.writeHead(200);
+        res.end(JSON.stringify({ summary: "" }));
+      } else {
+        res.end();
+      }
     }
     return;
   }
