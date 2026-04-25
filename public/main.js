@@ -24,7 +24,7 @@ try {
 
 // --- Spawn Pyodide WebWorker ---
 
-const worker = new Worker("worker.js");
+const worker = new Worker("/worker.js");
 let workerReady = false;
 let currentId = null;
 let idCounter = 0;

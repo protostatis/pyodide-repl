@@ -484,8 +484,8 @@ async function init() {
 
   // Fetch the real pyreplab.py and install it into Pyodide's filesystem
   const [pyrepResp, wasmResp] = await Promise.all([
-    fetch("pyreplab.py"),
-    fetch("pyreplab_wasm.py"),
+    fetch("/pyreplab.py"),
+    fetch("/pyreplab_wasm.py"),
   ]);
   const pyreplabSrc = await pyrepResp.text();
   const wasmInitSrc = await wasmResp.text();
