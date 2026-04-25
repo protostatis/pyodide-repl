@@ -14,6 +14,7 @@ _namespace = {"__name__": "__pyreplab__", "__builtins__": __builtins__}
 _exec_index = 0
 _history = []  # turn history: [{index, code, stdout, stderr, error, label}]
 _MAX_HISTORY = 50  # keep last N turns for LLM context
+_pending_html_parts = []  # HTML collected from show_df() calls during a run_code execution
 
 # Configure display limits for pandas/numpy
 pyreplab.configure_display(_namespace)
@@ -98,15 +99,15 @@ def _show_df(table=None, limit=20, columns=None, sort_by=None, ascending=False, 
         return
 
     preview = frame.head(limit)
-    more = max(0, len(frame) - len(preview))
+    total = len(frame)
+    shown = len(preview)
 
-    # Print shape info
-    print(f"[{len(frame)} rows x {len(frame.columns)} cols]")
-    # Print the DataFrame — it will be caught by _df_to_html if it's the last expr,
-    # or displayed as text via pandas repr
-    print(preview.to_string(index=False))
-    if more:
-        print(f"... {more} more rows")
+    shape_text = f"{total} rows × {len(frame.columns)} columns"
+    if shown < total:
+        shape_text += f", showing first {shown}"
+    shape_html = f'<div style="color:#64748b;font-size:12px;margin-top:4px">{shape_text}</div>'
+    table_html = preview.to_html(max_rows=limit + 1, max_cols=20, classes="df-table") + shape_html
+    _pending_html_parts.append(table_html)
 
 _namespace["show_df"] = _show_df
 
@@ -525,6 +526,8 @@ async def run_code(code, max_output=100_000, label="", is_llm=False):
                 except Exception:
                     return traceback.format_exc()
 
+    _pending_html_parts.clear()
+
     try:
         error = await _install_and_retry(exec_part, eval_expr)
     except SystemExit as e:
@@ -557,8 +560,11 @@ async def run_code(code, max_output=100_000, label="", is_llm=False):
         _history[:] = _history[-_MAX_HISTORY:]
 
     result = {"stdout": stdout, "stderr": stderr, "error": error}
-    # Combine DataFrame HTML and plot HTML
+    # Combine show_df() HTML, last-expression DataFrame HTML, and plot HTML
     all_html = ""
+    if _pending_html_parts:
+        all_html += ''.join(_pending_html_parts)
+        _pending_html_parts.clear()
     if html:
         all_html += html
     if plot_html:
