@@ -9,6 +9,7 @@ test("shared routes load client assets from the site root", () => {
 
   assert.match(index, /<script src="\/main\.js"><\/script>/);
   assert.match(main, /new Worker\("\/worker\.js"\)/);
+  assert.match(main, /location\.protocol === "https:" \? "wss:" : "ws:"/);
   assert.match(worker, /fetch\("\/pyreplab\.py"\)/);
   assert.match(worker, /fetch\("\/pyreplab_wasm\.py"\)/);
 });

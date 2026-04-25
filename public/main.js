@@ -162,7 +162,8 @@ window.builtinGenerate = function(query, namespace) {
 
 // --- WebSocket to server (for agent connections) ---
 
-const wsUrl = `ws://${location.host}/browser`;
+const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+const wsUrl = `${wsProtocol}//${location.host}/browser`;
 let ws = null;
 
 function connect() {
