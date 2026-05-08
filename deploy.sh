@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-HOST="100.55.95.25"
+HOST="35.153.83.133"
 KEY="$HOME/.ssh/unchained-key.pem"
 USER="ec2-user"
 APP_DIR="/opt/pyodide-repl"
