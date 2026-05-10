@@ -655,9 +655,15 @@ async def load_url(url, format=None):
     from pyodide.http import pyfetch
     import pandas as pd
     import io as _io
+    from urllib.parse import quote
 
-    proxy_url = "/api/proxy?url=" + url
-    resp = await pyfetch(proxy_url)
+    if url.startswith('//'):
+        url = 'https:' + url
+
+    fetch_url = url if url.startswith('/') else url
+    if url.startswith(('http://', 'https://')):
+        fetch_url = "/api/proxy?url=" + quote(url, safe='')
+    resp = await pyfetch(fetch_url)
     text = await resp.string()
 
     # Auto-detect format

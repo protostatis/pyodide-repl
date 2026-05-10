@@ -571,21 +571,30 @@ Rules:
     ];
 
     async function callOpenRouter(model) {
-      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${key}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://pyreplab.dev",
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          response_format: { type: "json_object" },
-          temperature: 0.2,
-        }),
-      });
-      return resp.json();
+      console.log(`[openrouter] request start model=${model} query="${query.substring(0, 50)}" ns=${namespace?.length || 0} turns=${recentTurns?.length || 0}`);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 60000);
+      try {
+        const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${key}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://pyreplab.dev",
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            response_format: { type: "json_object" },
+            temperature: 0.2,
+          }),
+          signal: controller.signal,
+        });
+        console.log(`[openrouter] response model=${model} status=${resp.status}`);
+        return resp.json();
+      } finally {
+        clearTimeout(timer);
+      }
     }
 
     function parseResponse(result) {
@@ -633,6 +642,12 @@ Rules:
       res.writeHead(200);
       res.end(JSON.stringify(generated));
     } catch (err) {
+      if (err.name === "AbortError") {
+        console.log("[openrouter] request timed out after 60s");
+        res.writeHead(504);
+        res.end(JSON.stringify({ error: "OpenRouter request timed out after 60s" }));
+        return;
+      }
       res.writeHead(502);
       res.end(JSON.stringify({ error: err.message }));
     }

@@ -110,7 +110,46 @@
     }
     #landing .subtitle { color: #6e7681; font-size: 14px; margin-bottom: 32px; }
 
+    .provenance-panel {
+      margin-bottom: 28px;
+      padding: 18px 18px 16px;
+      border: 1px solid #21262d;
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(22, 24, 34, 0.95), rgba(18, 20, 28, 0.95));
+      box-shadow: 0 12px 36px -24px rgba(88, 166, 255, 0.35);
+    }
+    .provenance-panel .eyebrow {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+      color: #8b949e; margin-bottom: 8px;
+    }
+    .provenance-panel .summary {
+      color: #c9d1d9; font-size: 13px; line-height: 1.55; max-width: 860px;
+      margin-bottom: 14px;
+    }
+    .provenance-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+    }
+    .provenance-card {
+      padding: 12px 12px 11px;
+      border-radius: 10px;
+      background: #161822;
+      border: 1px solid #21262d;
+    }
+    .provenance-card .label {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+      color: #8b949e; margin-bottom: 4px;
+    }
+    .provenance-card .value {
+      color: #e0e0e0; font-size: 13px; line-height: 1.45;
+    }
+    .provenance-card .muted {
+      color: #8b949e;
+    }
+
     .data-section { margin-bottom: 24px; animation: cellEnter 0.5s ease-out backwards; }
+    .data-section.full-width { grid-column: 1 / -1; }
     .data-section:nth-child(2) { animation-delay: 0.05s; }
     .data-section:nth-child(3) { animation-delay: 0.10s; }
     .data-section:nth-child(4) { animation-delay: 0.15s; }
@@ -426,6 +465,9 @@
         { title: 'World Population', desc: 'Country populations over time', code: "df = await load_url('https://raw.githubusercontent.com/datasets/population/main/data/population.csv')", ask: 'which countries grew the fastest?' },
         { title: 'Health Spending', desc: 'Healthcare expenditure vs life expectancy by country', code: "df = await load_url('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/healthexp.csv')", ask: 'does spending more on healthcare improve life expectancy?' },
       ],
+      'Research Data': [
+        { title: 'AI Demand Facts', desc: '13k+ SEC filing rows with spend, backlog, cash, and capex signals', code: "df = await load_url('/ai_demand_facts.csv')", ask: 'which buyers and suppliers are driving the spend?' },
+      ],
     };
 
     // --- State ---
@@ -443,14 +485,14 @@
     (function renderUploadSection() {
       const section = document.createElement('div');
       section.className = 'data-section';
-      section.innerHTML = `<h3>Your data</h3>`;
+      section.innerHTML = `<h3>Research workspace</h3>`;
       const grid = document.createElement('div');
       grid.className = 'data-grid';
       const card = document.createElement('div');
       card.className = 'upload-card';
       card.innerHTML = `
         <div class="card-title">Upload</div>
-        <div class="card-desc">CSV, JSON, TSV, or Excel — or drop anywhere</div>
+        <div class="card-desc">CSV, JSON, TSV, or Excel - or drop anywhere</div>
       `;
       card.addEventListener('click', () => fileInput.click());
       grid.appendChild(card);
@@ -461,8 +503,40 @@
     // --- Render grouped data cards ---
     Object.entries(DATASETS).forEach(([group, items]) => {
       const section = document.createElement('div');
-      section.className = 'data-section';
-      section.innerHTML = `<h3>${group}</h3>`;
+      section.className = group === 'Research Data' ? 'data-section full-width' : 'data-section';
+      section.innerHTML = group === 'Research Data' ? `
+        <h3>${group}</h3>
+        <div class="provenance-panel">
+          <div class="eyebrow">How we gathered AI Demand Facts</div>
+          <div class="summary">
+            We pulled inline XBRL instance documents from SEC EDGAR filings, extracted raw facts plus their contexts,
+            kept the source filing URLs and accession IDs for traceability, and added a light normalization layer for
+            spend, backlog, capex, cash, debt, and profitability signals.
+          </div>
+          <div class="provenance-grid">
+            <div class="provenance-card">
+              <div class="label">Source</div>
+              <div class="value">SEC XBRL instance docs</div>
+              <div class="muted">Primary filings, not news summaries</div>
+            </div>
+            <div class="provenance-card">
+              <div class="label">Coverage</div>
+              <div class="value">13 filings across 9 issuers</div>
+              <div class="muted">Meta, Microsoft, Alphabet, Amazon, Oracle, Broadcom, Vertiv, Micron, NVIDIA</div>
+            </div>
+            <div class="provenance-card">
+              <div class="label">Extraction</div>
+              <div class="value">13,019 rows, 20 columns</div>
+              <div class="muted">Facts, concepts, periods, dimensions, and numeric values</div>
+            </div>
+            <div class="provenance-card">
+              <div class="label">Normalization</div>
+              <div class="value">Spend-focused fact labels</div>
+              <div class="muted">Revenue, opex, backlog, capex, cash, debt, and profitability</div>
+            </div>
+          </div>
+        </div>
+      ` : `<h3>${group}</h3>`;
       const grid = document.createElement('div');
       grid.className = 'data-grid';
       items.forEach(ds => {
@@ -470,6 +544,10 @@
         card.className = 'data-card';
         card.innerHTML = `<div class="card-title">${ds.title}</div><div class="card-desc">${ds.desc}</div>`;
         card.addEventListener('click', () => {
+          if (ds.action === 'upload') {
+            fileInput.click();
+            return;
+          }
           if (!ready) {
             // Queue the selection — start notebook when ready
             window._pendingStart = { code: ds.code, ask: ds.ask };
@@ -557,6 +635,7 @@
       notebook.classList.remove('hidden');
       document.getElementById('save-btn').classList.remove('hidden');
       notebook.innerHTML = '';
+      window._lastContext = '{"namespace":[],"recentTurns":[]}';
 
       // Load data cell
       const loadCell = addCell('code', loadCode);
@@ -594,6 +673,7 @@
       notebook.classList.remove('hidden');
       document.getElementById('save-btn').classList.remove('hidden');
       notebook.innerHTML = '';
+      window._lastContext = '{"namespace":[],"recentTurns":[]}';
 
       (session.cells || []).forEach(c => {
         const cell = addCell(c.type || 'code', c.code || '');
@@ -845,7 +925,7 @@
       output.appendChild(note);
       const stopGenTicker = startTicker(note, 'generating code…');
 
-      const { namespace: nsSummary, recentTurns } = await getContext();
+      const { namespace: nsSummary, recentTurns } = await fetchContextSummary();
       console.log('[ask] context:', nsSummary.length, 'ns items,', recentTurns.length, 'turns');
 
       try {
@@ -904,7 +984,7 @@
           apiKey: apiKey.trim(),
           query,
           code: generatedCode,
-          output: (execResult.stdout || '') + (execResult.result || ''),
+          output: buildSummaryOutput(execResult),
           error: execResult.error || '',
         });
 
@@ -984,18 +1064,43 @@
       }
     }
 
-    function getContext() {
-      // Read cached context — updated automatically after every cell execution
+    async function fetchContextSummary() {
       try {
+        if (typeof window.getContext === 'function') {
+          const data = await window.getContext();
+          if (data && typeof data === 'object' && !Array.isArray(data)) {
+            return {
+              namespace: data.namespace || [],
+              recentTurns: data.recentTurns || [],
+            };
+          }
+          const parsed = JSON.parse(typeof data === 'string' ? data : String(data));
+          return {
+            namespace: parsed.namespace || [],
+            recentTurns: parsed.recentTurns || [],
+          };
+        }
         const data = window._lastContext || '{"namespace":[],"recentTurns":[]}';
         const parsed = JSON.parse(typeof data === 'string' ? data : String(data));
-        return Promise.resolve({
+        return {
           namespace: parsed.namespace || [],
           recentTurns: parsed.recentTurns || [],
-        });
+        };
       } catch {
-        return Promise.resolve({ namespace: [], recentTurns: [] });
+        return { namespace: [], recentTurns: [] };
       }
+    }
+
+    function buildSummaryOutput(execResult) {
+      const parts = [];
+      if (execResult.stdout) parts.push(execResult.stdout.trim());
+      if (execResult.result) parts.push(String(execResult.result).trim());
+      if (execResult.html) {
+        const doc = new DOMParser().parseFromString(execResult.html, 'text/html');
+        const text = (doc.body && doc.body.textContent) ? doc.body.textContent.replace(/\s+/g, ' ').trim() : '';
+        if (text) parts.push(`table preview: ${text.slice(0, 2000)}`);
+      }
+      return parts.filter(Boolean).join('\n\n');
     }
 
     function showResult(output, result, append) {
