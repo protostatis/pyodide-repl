@@ -9,7 +9,9 @@ from __future__ import annotations
 import csv
 import re
 import os
+import random
 import time
+import traceback
 from datetime import date
 from urllib.error import HTTPError, URLError
 import urllib.request
@@ -146,13 +148,15 @@ FACT_RULES = [
     (re.compile(r"NetIncomeLoss"), "profitability", "Net Income"),
     (re.compile(r"ResearchAndDevelopmentExpense"), "demand", "R&D Expense"),
     (re.compile(r"GeneralAndAdministrativeExpense|SellingAndMarketingExpense|SellingGeneralAndAdministrativeExpense|OperatingExpenses|CostsAndExpenses"), "opex", "Operating Expense"),
-    (re.compile(r"AllocatedShareBasedCompensationExpense|ShareBasedCompensation|StockIssuedDuringPeriodValueShareBasedCompensation|AdjustmentsRelatedToTaxWithholdingForShareBasedCompensation|PaymentsRelatedToTaxWithholdingForShareBasedCompensation"), "demand", "Share-based Compensation"),
+    (re.compile(r"AllocatedShareBasedCompensationExpense|ShareBasedCompensation$|ShareBasedCompensationExpense"), "demand", "Share-based Compensation"),
     (re.compile(r"PaymentsToAcquirePropertyPlantAndEquipment|PropertyPlantAndEquipmentNet|PropertyPlantAndEquipmentGross|PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAsset|OperatingLeaseRightOfUseAsset"), "capacity", "Capex / PP&E"),
     (re.compile(r"CashAndCashEquivalents|CashEquivalentsAtCarryingValue|CashCashEquivalents"), "balance_sheet", "Cash and Equivalents"),
     (re.compile(r"LongTermDebt|DebtInstrumentCarryingAmount|DebtInstrumentFaceAmount|DebtInstrumentFairValue|RepaymentsOfDebt"), "balance_sheet", "Debt"),
     (re.compile(r"RevenueRemainingPerformanceObligation|ContractWithCustomerLiability|IncreaseDecreaseInContractWithCustomerLiability"), "demand", "Backlog / Deferred Revenue"),
     (re.compile(r"NetCashProvidedByUsedInOperatingActivities|NetCashProvidedByUsedInInvestingActivities|NetCashProvidedByUsedInFinancingActivities"), "cash_flow", "Cash Flow"),
 ]
+
+MAX_XML_BYTES = 20 * 1024 * 1024
 
 
 def local_name(tag: str) -> str:
@@ -242,12 +246,18 @@ def fetch_xml(url: str, retries: int = 3, timeout: int = 60) -> bytes:
     for attempt in range(retries + 1):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return resp.read()
+                content_length = resp.headers.get("Content-Length")
+                if content_length and int(content_length) > MAX_XML_BYTES:
+                    raise ValueError(f"XML response too large: {content_length} bytes")
+                body = resp.read(MAX_XML_BYTES + 1)
+                if len(body) > MAX_XML_BYTES:
+                    raise ValueError(f"XML response exceeded {MAX_XML_BYTES} bytes")
+                return body
         except (HTTPError, URLError, TimeoutError) as err:
             last_err = err
             if attempt >= retries:
                 raise
-            time.sleep(delay)
+            time.sleep(delay + random.uniform(0, 0.5))
             delay *= 2
     raise last_err  # pragma: no cover
 
@@ -309,7 +319,7 @@ def main():
         try:
             rows, counts = extract_rows(filing)
         except Exception as err:
-            print(f"{filing.ticker}: failed to load {filing.source_url} ({err})")
+            print(f"{filing.ticker}: failed to load {filing.source_url}\n{traceback.format_exc().rstrip()}")
             continue
         all_rows.extend(rows)
         concept_totals.update(counts)
