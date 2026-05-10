@@ -21,7 +21,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-SEC_UA = os.environ.get("SEC_USER_AGENT", "pyreplab research bot (set SEC_USER_AGENT for contact info)")
+SEC_UA = os.environ.get("SEC_USER_AGENT")
+if not SEC_UA:
+    raise RuntimeError("SEC_USER_AGENT is required for SEC requests")
 
 
 @dataclass(frozen=True)
@@ -318,12 +320,13 @@ def main():
     for filing in FILINGS:
         try:
             rows, counts = extract_rows(filing)
-        except Exception as err:
+        except Exception:
             print(f"{filing.ticker}: failed to load {filing.source_url}\n{traceback.format_exc().rstrip()}")
             continue
         all_rows.extend(rows)
         concept_totals.update(counts)
         print(f"{filing.ticker}: {len(rows)} rows")
+        time.sleep(0.25)
 
     out_path = Path("public/ai_demand_facts.csv")
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -351,7 +354,7 @@ def main():
         "is_primary_fact",
     ]
 
-    with out_path.open("w", newline="") as f:
+    with out_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(all_rows)
