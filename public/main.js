@@ -151,7 +151,26 @@ window.pipInstall = function(packages) {
 // --- Get context without polluting history ---
 
 window.getContext = function() {
-  worker.postMessage({ type: "get-context" });
+  return new Promise((resolve) => {
+    const prev = window.onContextResult;
+    let settled = false;
+    const finish = (data, timedOut = false) => {
+      if (settled) return;
+      settled = true;
+      window._lastContext = data;
+      window.onContextResult = prev;
+      if (timedOut) appendLog("[context] timeout, using cached snapshot\n", "system");
+      resolve(data);
+    };
+    const timer = setTimeout(() => {
+      finish(window._lastContext || '{"namespace":[],"recentTurns":[]}', true);
+    }, 5000);
+    window.onContextResult = (data) => {
+      clearTimeout(timer);
+      finish(data);
+    };
+    worker.postMessage({ type: "get-context" });
+  });
 };
 
 // --- Builtin generate fallback ---

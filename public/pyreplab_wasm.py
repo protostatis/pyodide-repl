@@ -214,9 +214,7 @@ def _namespace_summary():
         try:
             import pandas as pd
             if isinstance(value, pd.DataFrame):
-                row["shape"] = list(value.shape)
-                row["columns"] = list(value.columns)[:20]
-                row["dtypes"] = {str(c): str(d) for c, d in list(value.dtypes.items())[:20]}
+                row.update(_dataframe_summary(value))
             elif isinstance(value, pd.Series):
                 row["shape"] = [len(value)]
                 row["dtype"] = str(value.dtype)
@@ -232,6 +230,77 @@ def _namespace_summary():
             row["value"] = value[:100]
         rows.append(row)
     return rows
+
+
+def _dataframe_summary(df, max_head_rows=3, max_top_values=5, max_numeric_cols=6):
+    """Return a compact, JSON-safe profile for a DataFrame."""
+    import pandas as pd
+
+    summary = {
+        "shape": list(df.shape),
+        "columns": list(df.columns)[:20],
+        "dtypes": {str(c): str(d) for c, d in list(df.dtypes.items())[:20]},
+    }
+
+    try:
+        summary["head"] = json.loads(df.head(max_head_rows).to_json(orient="records", date_format="iso"))
+    except Exception:
+        summary["head"] = []
+
+    try:
+        missing = df.isna().sum().sort_values(ascending=False)
+        summary["missing"] = {str(c): int(v) for c, v in missing[missing > 0].head(10).items()}
+    except Exception:
+        summary["missing"] = {}
+
+    try:
+        preferred = [
+            c for c in df.columns
+            if c in {"company", "ticker", "fact_group", "fact_label", "concept", "category", "type", "unit", "context_type"}
+        ]
+        likely_categoricals = []
+        for c in df.columns:
+            if c in preferred:
+                continue
+            s = df[c]
+            if pd.api.types.is_object_dtype(s) or pd.api.types.is_string_dtype(s) or pd.api.types.is_categorical_dtype(s) or pd.api.types.is_bool_dtype(s):
+                try:
+                    nunique = int(s.nunique(dropna=True))
+                except Exception:
+                    continue
+                if 2 <= nunique <= 25:
+                    likely_categoricals.append(c)
+        top_cols = (preferred + likely_categoricals)[:6]
+        top_values = {}
+        for c in top_cols:
+            try:
+                counts = df[c].astype("string").fillna("<NA>").value_counts(dropna=False).head(max_top_values)
+                top_values[str(c)] = {str(k): int(v) for k, v in counts.items()}
+            except Exception:
+                continue
+        summary["top_values"] = top_values
+    except Exception:
+        summary["top_values"] = {}
+
+    try:
+        numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+        numeric = {}
+        for c in numeric_cols[:max_numeric_cols]:
+            s = df[c].dropna()
+            if s.empty:
+                continue
+            numeric[str(c)] = {
+                "non_null": int(s.shape[0]),
+                "min": float(s.min()),
+                "p50": float(s.median()),
+                "mean": float(s.mean()),
+                "max": float(s.max()),
+            }
+        summary["numeric"] = numeric
+    except Exception:
+        summary["numeric"] = {}
+
+    return summary
 
 
 # ============================================================
@@ -655,9 +724,15 @@ async def load_url(url, format=None):
     from pyodide.http import pyfetch
     import pandas as pd
     import io as _io
+    from urllib.parse import quote
 
-    proxy_url = "/api/proxy?url=" + url
-    resp = await pyfetch(proxy_url)
+    if url.startswith('//'):
+        url = 'https:' + url
+
+    fetch_url = url if url.startswith('/') else url
+    if url.startswith(('http://', 'https://')):
+        fetch_url = "/api/proxy?url=" + quote(url, safe='')
+    resp = await pyfetch(fetch_url)
     text = await resp.string()
 
     # Auto-detect format

@@ -533,6 +533,12 @@ Rules:
 - For tabular output, use show_df(frame, limit=20, columns=None, sort_by=None, ascending=False)
 - show_df() accepts DataFrame, list-of-dicts, dict, or Series. show_df() with no args lists all DataFrames
 - If the user asks to sort, rank, compare, list, or inspect, prefer show_df() over print()
+- If a DataFrame namespace entry includes \`dataset_summary\`, read it first; it is the compact capsule for unfamiliar datasets
+- For any new or unfamiliar dataset, the first code cell MUST be schema discovery, not analysis: print(df.columns), df.dtypes, df.head(3), and value counts for the likely filter/group columns you plan to use
+- Before filtering, joining, or aggregating, inspect the actual values in the relevant columns; do not guess labels from the query text
+- If the dataset has normalized labels or summary columns (for example fact_group, fact_label, category, type), prefer those over substring filters on raw text fields
+- If a first pass filter returns 0 rows, stop and diagnose the schema/value mismatch before trying a more complex analysis
+- When unsure about a dataset schema, ask a clarifying question or inspect the dataframe first rather than one-shotting an answer
 - The last bare expression auto-displays as an HTML table if it's a DataFrame — no need to wrap it
 - Always print() scalar results you want the user to see
 - Packages auto-install on first import (e.g. sklearn, scipy, seaborn). Just import and use them — no pip install needed
@@ -571,21 +577,30 @@ Rules:
     ];
 
     async function callOpenRouter(model) {
-      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${key}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://pyreplab.dev",
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          response_format: { type: "json_object" },
-          temperature: 0.2,
-        }),
-      });
-      return resp.json();
+      console.log(`[openrouter] request start model=${model} query="${query.substring(0, 50)}" ns=${namespace?.length || 0} turns=${recentTurns?.length || 0}`);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 60000);
+      try {
+        const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${key}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://pyreplab.dev",
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            response_format: { type: "json_object" },
+            temperature: 0.2,
+          }),
+          signal: controller.signal,
+        });
+        console.log(`[openrouter] response model=${model} status=${resp.status}`);
+        return resp.json();
+      } finally {
+        clearTimeout(timer);
+      }
     }
 
     function parseResponse(result) {
@@ -633,6 +648,12 @@ Rules:
       res.writeHead(200);
       res.end(JSON.stringify(generated));
     } catch (err) {
+      if (err.name === "AbortError") {
+        console.log("[openrouter] request timed out after 60s");
+        res.writeHead(504);
+        res.end(JSON.stringify({ error: "OpenRouter request timed out after 60s" }));
+        return;
+      }
       res.writeHead(502);
       res.end(JSON.stringify({ error: err.message }));
     }
