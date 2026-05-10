@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import csv
 import re
+import os
+import time
 from datetime import date
+from urllib.error import HTTPError, URLError
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -16,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-SEC_UA = "OpenCode research bot (mailto:research@example.com)"
+SEC_UA = os.environ.get("SEC_USER_AGENT", "pyreplab research bot (set SEC_USER_AGENT for contact info)")
 
 
 @dataclass(frozen=True)
@@ -171,14 +174,17 @@ def split_qname(tag: str) -> tuple[str, str]:
 def to_number(raw: str):
     text = raw.strip().replace(",", "")
     neg = text.startswith("(") and text.endswith(")")
+    percent = text.endswith("%")
     if neg:
         text = text[1:-1]
-    if text.endswith("%"):
+    if percent:
         text = text[:-1]
     if text in {"", "-", "--"}:
         return None
     try:
         value = float(text)
+        if percent:
+            value /= 100
         return -value if neg else value
     except ValueError:
         return None
@@ -229,10 +235,21 @@ def parse_contexts(root: ET.Element):
     return contexts
 
 
-def fetch_xml(url: str) -> bytes:
+def fetch_xml(url: str, retries: int = 3, timeout: int = 60) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": SEC_UA, "Accept-Encoding": "identity"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return resp.read()
+    delay = 2
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except (HTTPError, URLError, TimeoutError) as err:
+            last_err = err
+            if attempt >= retries:
+                raise
+            time.sleep(delay)
+            delay *= 2
+    raise last_err  # pragma: no cover
 
 
 def extract_rows(filing: Filing):
@@ -289,7 +306,11 @@ def main():
     concept_totals = Counter()
 
     for filing in FILINGS:
-        rows, counts = extract_rows(filing)
+        try:
+            rows, counts = extract_rows(filing)
+        except Exception as err:
+            print(f"{filing.ticker}: failed to load {filing.source_url} ({err})")
+            continue
         all_rows.extend(rows)
         concept_totals.update(counts)
         print(f"{filing.ticker}: {len(rows)} rows")
