@@ -301,9 +301,13 @@ function validateInsightPayload(payload) {
   const description = normalizeForComparison(rawDescription) === normalizeForComparison(title) ? "" : rawDescription;
   const takeaway = truncateText(payload.takeaway || description || title, 500);
   const visibility = payload.visibility === "unlisted" ? "unlisted" : "public";
+  const notebookSlug = /^[a-f0-9]+$/i.test(String(payload.notebookSlug || ""))
+    ? String(payload.notebookSlug).toLowerCase()
+    : "";
   const notebook = {
     cells,
     dataset: payload.dataset && typeof payload.dataset === "object" ? payload.dataset : null,
+    notebookSlug,
   };
   return { title, description, takeaway, visibility, notebook, evidenceFacts };
 }
@@ -413,9 +417,12 @@ const expectedState = sessionStorage.getItem('authState') || '';
 if (!token) throw new Error('Missing auth token');
 if (expectedState && expectedState !== returnedState) throw new Error('Invalid auth state');
 localStorage.setItem('authToken', token);
+const returnTo = sessionStorage.getItem('authReturnTo') || '/';
+const safeReturnTo = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/';
 sessionStorage.removeItem('authState');
 sessionStorage.removeItem('authIntent');
-location.replace('/');
+sessionStorage.removeItem('authReturnTo');
+location.replace(safeReturnTo);
 </script></body></html>`;
 }
 
@@ -748,6 +755,8 @@ function renderInsightHtml(insight, canonicalUrl) {
   const encodedTitle = encodeURIComponent(title);
   const followUpHref = `/?q=${encodeURIComponent(`Ask a follow-up about ${title}`)}`;
   const remixHref = `/?remix=${encodeURIComponent(insight.id || "")}`;
+  const notebookSlug = /^[a-f0-9]+$/i.test(String(insight.notebook?.notebookSlug || "")) ? String(insight.notebook.notebookSlug).toLowerCase() : "";
+  const notebookLink = notebookSlug ? `<a href="/s/${escapeAttr(notebookSlug)}">Open notebook</a>` : "";
   const sourceWork = renderSourceWork(cells, sources);
   const published = insight.createdAt ? new Date(insight.createdAt).toISOString().slice(0, 10) : "Published memo";
   const primarySource = sources[0]?.label || sources[0]?.source || "Published analysis";
@@ -796,7 +805,7 @@ function renderInsightHtml(insight, canonicalUrl) {
       <section class="card sources"><p class="label">Where the numbers came from</p><div class="source-list">${sources.map(renderInsightSource).join("")}</div></section>
       <section class="card method"><p class="label">Check the work</p><p class="muted">The code and plain-text outputs are kept below so the result can be verified.</p></section>
     </div>
-    <aside class="rail" aria-label="Share and analysis actions"><section class="card"><p class="label">Share this insight</p>${shareHtml}</section><section class="card"><p class="label">Continue analysis</p><div class="buttons"><a href="${escapeAttr(followUpHref)}">Ask follow-up</a><a class="secondary" href="/#upload">Analyze your own CSV</a><a class="secondary" href="/?ticker=">Run another ticker</a><a class="secondary" href="${escapeAttr(remixHref)}">Remix</a></div></section></aside>
+    <aside class="rail" aria-label="Share and analysis actions"><section class="card"><p class="label">Share this insight</p>${shareHtml}</section><section class="card"><p class="label">Continue analysis</p><div class="buttons">${notebookLink}<a href="${escapeAttr(followUpHref)}">Ask follow-up</a><a class="secondary" href="/#upload">Analyze your own CSV</a><a class="secondary" href="/?ticker=">Run another ticker</a><a class="secondary" href="${escapeAttr(remixHref)}">Remix</a></div></section></aside>
   </section>
   <details class="work"><summary>Show reproducibility notes</summary>${sourceWork}</details>
 </main></body></html>`;
@@ -1082,7 +1091,7 @@ const server = createServer(async (req, res) => {
       { expiresIn: "7d" }
     );
     res.writeHead(200, { "Content-Type": "text/html" });
-    res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Dev sign in</title></head><body><script>localStorage.setItem('authToken', ${JSON.stringify(token)});sessionStorage.removeItem('authIntent');location.replace('/');</script><p>Signing in for ${escapeHtml(intent)}...</p></body></html>`);
+    res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Dev sign in</title></head><body><script>localStorage.setItem('authToken', ${JSON.stringify(token)});const returnTo=sessionStorage.getItem('authReturnTo')||'/';const safeReturnTo=returnTo.startsWith('/')&&!returnTo.startsWith('//')?returnTo:'/';sessionStorage.removeItem('authIntent');sessionStorage.removeItem('authReturnTo');location.replace(safeReturnTo);</script><p>Signing in for ${escapeHtml(intent)}...</p></body></html>`);
     return;
   }
 
