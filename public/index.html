@@ -608,12 +608,13 @@
     const publishVisibilityInput = document.getElementById('publish-visibility-input');
     const publishIssues = document.getElementById('publish-issues');
     const publishSubmit = document.getElementById('publish-submit');
-    const AUTH_PROVIDER_URL = window.__AUTH_PROVIDER_URL || window.AUTH_PROVIDER_URL || 'https://unchainedsky.com';
+    const AUTH_PROVIDER_URL = window.__AUTH_PROVIDER_URL || 'https://unchainedsky.com';
     let ready = false;
     let cellCounter = 0;
     let runningCell = null;
 
-    function decodeAuthToken(token) {
+    // Display only. The server verifies JWT signatures on every authenticated request.
+    function decodeJwtPayloadUnsafe(token) {
       try {
         const payload = token.split('.')[1];
         if (!payload) return {};
@@ -627,7 +628,7 @@
     function renderAuthUi() {
       const token = localStorage.getItem('authToken') || '';
       if (token) {
-        const user = decodeAuthToken(token);
+        const user = decodeJwtPayloadUnsafe(token);
         authUserEl.textContent = user.name || user.email || 'Signed in';
         authUserEl.classList.remove('hidden');
         authBtn.textContent = 'Sign out';
@@ -1027,17 +1028,27 @@
 
     async function postInsight(payload) {
       const token = localStorage.getItem('authToken') || '';
-      const resp = await fetch('/api/insights', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data.error || 'Publish failed');
-      return data;
+      let lastError;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const resp = await fetch('/api/insights', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (resp.ok) return data;
+          lastError = new Error(data.error || 'Publish failed');
+          if (resp.status < 500) break;
+        } catch (err) {
+          lastError = err;
+        }
+        await new Promise(resolve => setTimeout(resolve, 350));
+      }
+      throw lastError || new Error('Publish failed');
     }
 
     async function finishInsightPublish(payload) {
@@ -1055,7 +1066,8 @@
         location.href = path;
       } catch (err) {
         console.error('Publish failed:', err);
-        alert(err.message || 'Publish failed');
+        openPublishDialog(payload);
+        renderPublishError(err.message || 'Publish failed');
         btn.disabled = false;
         publishSubmit.disabled = false;
         btn.textContent = 'Publish insight';
@@ -1063,14 +1075,32 @@
       }
     }
 
-    function renderPublishIssues(issues) {
-      if (!issues.length) {
+    function renderPublishMessages(heading, messages) {
+      if (!messages.length) {
         publishIssues.classList.remove('visible');
-        publishIssues.innerHTML = '';
+        publishIssues.textContent = '';
         return;
       }
       publishIssues.classList.add('visible');
-      publishIssues.innerHTML = `<strong>Needs a cleaner public version:</strong><ul>${issues.map(issue => `<li>${issue}</li>`).join('')}</ul>`;
+
+      const title = document.createElement('strong');
+      title.textContent = heading;
+      const list = document.createElement('ul');
+      messages.forEach(message => {
+        const item = document.createElement('li');
+        item.textContent = message;
+        list.appendChild(item);
+      });
+
+      publishIssues.replaceChildren(title, list);
+    }
+
+    function renderPublishIssues(issues) {
+      renderPublishMessages('Needs a cleaner public version:', issues);
+    }
+
+    function renderPublishError(message) {
+      renderPublishMessages('Publish failed:', [message]);
     }
 
     function buildPublishPayloadFromDialog(basePayload) {
@@ -1681,6 +1711,10 @@
         location.href = path;
       } catch (err) {
         console.error('Publish resume failed:', err);
+        let payload;
+        try { payload = JSON.parse(pending); } catch { payload = collectInsightPayload(); }
+        openPublishDialog(payload);
+        renderPublishError(err.message || 'Could not resume publishing. Please review and try again.');
       }
     })();
   </script>

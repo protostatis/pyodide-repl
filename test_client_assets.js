@@ -21,7 +21,12 @@ test("shared routes load client assets from the site root", () => {
   assert.match(index, /isPublishCodeLike/);
   assert.match(index, /getPublishCellOutput/);
   assert.match(index, /\.agent-summary/);
+  assert.match(index, /decodeJwtPayloadUnsafe/);
+  assert.match(index, /renderPublishMessages/);
+  assert.match(index, /item\.textContent = message/);
   assert.doesNotMatch(index, /prompt\('Insight title'/);
+  assert.doesNotMatch(index, /window\.AUTH_PROVIDER_URL/);
+  assert.doesNotMatch(index, /Publish failed:<\/strong><ul><li>\$\{message\}/);
   assert.match(main, /new Worker\("\/worker\.js"\)/);
   assert.match(main, /location\.protocol === "https:" \? "wss:" : "ws:"/);
   assert.match(worker, /fetch\("\/pyreplab\.py"\)/);

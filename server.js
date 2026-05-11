@@ -13,6 +13,7 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC = join(__dirname, "public");
 const PUBLIC_ROOT = resolve(PUBLIC);
 const PORT = parseInt(process.env.PORT || "3000", 10);
+const MAX_JSON_BODY_BYTES = 1024 * 1024;
 const MAX_PROXY_REDIRECTS = 5;
 const MAX_PROXY_RESPONSE_BYTES = 10 * 1024 * 1024;
 
@@ -128,7 +129,7 @@ function requireAuth(req, res) {
   }
 }
 
-async function readJsonBody(req, maxBytes = 1024 * 1024) {
+async function readJsonBody(req, maxBytes = MAX_JSON_BODY_BYTES) {
   let body = "";
   for await (const chunk of req) {
     body += chunk;
@@ -147,23 +148,23 @@ function initInsightsDb(dbPath) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS insights (
       id TEXT PRIMARY KEY,
-      user_sub TEXT NOT NULL,
-      user_name TEXT,
-      user_email TEXT,
-      user_picture TEXT,
-      title TEXT NOT NULL,
-      description TEXT,
-      takeaway TEXT,
+      user_sub TEXT NOT NULL CHECK (length(user_sub) <= 256),
+      user_name TEXT CHECK (user_name IS NULL OR length(user_name) <= 160),
+      user_email TEXT CHECK (user_email IS NULL OR length(user_email) <= 320),
+      user_picture TEXT CHECK (user_picture IS NULL OR length(user_picture) <= 1000),
+      title TEXT NOT NULL CHECK (length(title) <= 140),
+      description TEXT CHECK (description IS NULL OR length(description) <= 280),
+      takeaway TEXT CHECK (takeaway IS NULL OR length(takeaway) <= 500),
       body_json TEXT NOT NULL,
       notebook_json TEXT NOT NULL,
       hero_html TEXT,
       source_json TEXT,
-      visibility TEXT NOT NULL DEFAULT 'public',
-      slug TEXT,
-      origin_host TEXT,
-      fork_of TEXT,
-      view_count INTEGER DEFAULT 0,
-      remix_count INTEGER DEFAULT 0,
+      visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'unlisted')),
+      slug TEXT CHECK (slug IS NULL OR length(slug) <= 70),
+      origin_host TEXT CHECK (origin_host IS NULL OR length(origin_host) <= 255),
+      fork_of TEXT CHECK (fork_of IS NULL OR length(fork_of) <= 128),
+      view_count INTEGER DEFAULT 0 CHECK (view_count >= 0),
+      remix_count INTEGER DEFAULT 0 CHECK (remix_count >= 0),
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -404,6 +405,8 @@ function renderAuthCallbackPage(result) {
   const token = JSON.stringify(result.token || result.access_token || result.authToken || "");
   const returnedState = JSON.stringify(result.state || "");
   return `<!doctype html><html><head><meta charset="utf-8"><title>Signing in...</title></head><body><script>
+// OAuth state is stored in sessionStorage by the page that initiated login;
+// this callback verifies it before persisting the returned token.
 const token = ${token};
 const returnedState = ${returnedState};
 const expectedState = sessionStorage.getItem('authState') || '';
@@ -1118,7 +1121,7 @@ const server = createServer(async (req, res) => {
     const user = requireAuth(req, res);
     if (!user) return;
     try {
-      const payload = await readJsonBody(req);
+      const payload = await readJsonBody(req, MAX_JSON_BODY_BYTES);
       const created = insertInsight(insightsDb, user, payload, req.headers.host || "");
       sendJson(res, 200, created);
     } catch (err) {

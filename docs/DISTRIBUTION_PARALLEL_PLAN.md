@@ -159,6 +159,8 @@ Auth:
 - `GET /auth/callback?code=...&state=...`
 - `GET /auth/dev-token?intent=signin|publish|remix` in development only.
 - Bearer token storage remains `localStorage.authToken` for parity with Sky Search.
+- `localStorage.authToken` is an MVP parity tradeoff, not the preferred production posture. Avoid third-party scripts on authenticated pages; migrate to httpOnly `SameSite=Lax` cookies if this becomes a broader production surface.
+- `JWT_SECRET` must be generated with at least 128 bits of entropy. Use 32+ random characters or 64+ hex characters from a CSPRNG.
 
 Insights:
 
@@ -493,6 +495,7 @@ Outputs:
 - Request size limits for JSON endpoints.
 - Safe rendering helpers for saved output.
 - Validation caps for cells, code length, title, description, output text.
+- Application validation is primary; DB-level `CHECK` constraints should mirror public-field caps for new SQLite databases as defense in depth.
 - Tests around XSS, oversized saves, path handling, and auth failures.
 
 Acceptance criteria:
