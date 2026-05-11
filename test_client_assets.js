@@ -11,12 +11,16 @@ test("shared routes load client assets from the site root", () => {
   assert.match(index, /async function copyShareUrl\(url\)/);
   assert.match(index, /history\.replaceState\(null, '', `\/s\/\$\{data\.slug\}`\)/);
   assert.match(index, /Publish insight/);
+  assert.match(index, /Copy notebook link/);
+  assert.match(index, /share-notebook-btn/);
   assert.match(index, /id="publish-dialog"/);
   assert.match(index, /Prepare a readable public artifact/);
   assert.match(index, /openPublishDialog/);
   assert.match(index, /publish-form/);
   assert.match(index, /\/api\/insights/);
   assert.match(index, /pendingInsightPublish/);
+  assert.match(index, /authReturnTo/);
+  assert.match(index, /notebookSlug/);
   assert.match(index, /getPublishQualityIssues/);
   assert.match(index, /isPublishCodeLike/);
   assert.match(index, /getPublishCellOutput/);

@@ -478,6 +478,7 @@
     <div class="header-actions">
       <button id="new-btn" title="New notebook">New</button>
       <button id="save-btn" title="Publish a shareable insight" class="hidden">Publish insight</button>
+      <button id="share-notebook-btn" title="Copy an editable notebook link" class="hidden">Copy notebook link</button>
       <button id="add-top-btn" title="Add cell">+ Cell</button>
       <span id="auth-user" class="auth-user hidden"></span>
       <button id="auth-btn" title="Sign in">Sign in</button>
@@ -598,6 +599,7 @@
     const fileInput = document.getElementById('file-input');
     const dropOverlay = document.getElementById('drop-overlay');
     const saveBtn = document.getElementById('save-btn');
+    const shareNotebookBtn = document.getElementById('share-notebook-btn');
     const authUserEl = document.getElementById('auth-user');
     const authBtn = document.getElementById('auth-btn');
     const publishDialog = document.getElementById('publish-dialog');
@@ -644,6 +646,7 @@
     window.__startSignIn = function(intent) {
       const authIntent = intent || 'signin';
       sessionStorage.setItem('authIntent', authIntent);
+      sessionStorage.setItem('authReturnTo', `${location.pathname}${location.search}${location.hash}` || '/');
       if (['localhost', '127.0.0.1', '0.0.0.0', '[::1]'].includes(location.hostname)) {
         location.href = `/auth/dev-token?intent=${encodeURIComponent(authIntent)}`;
         return;
@@ -821,6 +824,9 @@
       saveBtn.textContent = 'Publish insight';
       saveBtn.title = 'Publish a shareable insight';
       saveBtn.classList.remove('hidden');
+      shareNotebookBtn.textContent = 'Copy notebook link';
+      shareNotebookBtn.title = 'Copy an editable notebook link';
+      shareNotebookBtn.classList.remove('hidden');
       document.title = 'Publish a shareable insight';
     }
 
@@ -1145,14 +1151,17 @@
       renderPublishIssues(qualityIssues);
       if (qualityIssues.length) return;
 
+      const notebookShare = await saveNotebookSlug({ copy: false, updateHistory: false, buttonFeedback: false });
+      const publishWithNotebook = notebookShare?.slug ? { ...publishPayload, notebookSlug: notebookShare.slug } : publishPayload;
+
       closePublishDialog();
       if (!localStorage.getItem('authToken')) {
-        sessionStorage.setItem('pendingInsightPublish', JSON.stringify(publishPayload));
+        sessionStorage.setItem('pendingInsightPublish', JSON.stringify(publishWithNotebook));
         window.__startSignIn('publish');
         return;
       }
 
-      await finishInsightPublish(publishPayload);
+      await finishInsightPublish(publishWithNotebook);
     }
 
     function publishNotebookInsight() {
@@ -1182,14 +1191,19 @@
       });
     });
 
-    async function saveNotebookSlug() {
-      const cells = Array.from(notebook.querySelectorAll('.cell')).map(cell => {
+    function collectNotebookShareCells() {
+      return Array.from(notebook.querySelectorAll('.cell')).map(cell => {
         const code = cell.querySelector('.cell-input').value;
         const output = cell.querySelector('.cell-output');
         // Save full HTML to preserve charts, tables, and agent summaries
         const html = output && output.classList.contains('has-output') ? output.innerHTML : '';
         return { type: cell.dataset.type, code, html };
       }).filter(c => c.code.trim());
+    }
+
+    async function saveNotebookSlug(options = {}) {
+      const { copy = true, updateHistory = true, buttonFeedback = true } = options;
+      const cells = collectNotebookShareCells();
 
       try {
         const resp = await fetch('/api/save', {
@@ -1200,16 +1214,19 @@
         const data = await resp.json();
         if (data.slug) {
           const url = `${location.origin}/s/${data.slug}`;
-          const copied = await copyShareUrl(url);
-          history.replaceState(null, '', `/s/${data.slug}`);
-          const btn = document.getElementById('save-btn');
-          btn.title = url;
-          btn.textContent = copied ? 'Copied!' : 'Saved';
-          setTimeout(() => { btn.textContent = 'Publish insight'; }, 2000);
+          const copied = copy ? await copyShareUrl(url) : false;
+          if (updateHistory) history.replaceState(null, '', `/s/${data.slug}`);
+          if (buttonFeedback) {
+            shareNotebookBtn.title = url;
+            shareNotebookBtn.textContent = copied ? 'Copied!' : 'Saved';
+            setTimeout(() => { shareNotebookBtn.textContent = 'Copy notebook link'; }, 2000);
+          }
+          return { slug: data.slug, url };
         }
       } catch (err) {
         console.error('Save failed:', err);
       }
+      return null;
     }
     window.saveNotebookSlug = saveNotebookSlug;
 
@@ -1217,6 +1234,7 @@
     document.getElementById('new-btn').addEventListener('click', () => {
       notebook.classList.add('hidden');
       saveBtn.classList.add('hidden');
+      shareNotebookBtn.classList.add('hidden');
       notebook.innerHTML = '';
       landing.classList.remove('hidden');
       cellCounter = 0;
@@ -1226,6 +1244,7 @@
 
     // --- Publish button ---
     saveBtn.addEventListener('click', publishNotebookInsight);
+    shareNotebookBtn.addEventListener('click', () => saveNotebookSlug());
 
     // --- "+ Cell" button ---
     document.getElementById('add-top-btn').addEventListener('click', () => {

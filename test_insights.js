@@ -71,6 +71,7 @@ test("public insight page escapes notebook source and output", () => {
     },
     notebook: {
       dataset: { label: "Research <Dataset>" },
+      notebookSlug: "abc123",
       cells: [{
         type: "code",
         code: "<script>alert(1)</script>",
@@ -104,6 +105,7 @@ test("public insight page escapes notebook source and output", () => {
   assert.match(html, /twitter\.com\/intent\/tweet/);
   assert.match(html, /linkedin\.com\/sharing\/share-offsite/);
   assert.match(html, /href="\/\?q=Ask%20a%20follow-up/);
+  assert.match(html, /href="\/s\/abc123">Open notebook/);
   assert.match(html, /href="\/#upload"/);
   assert.match(html, /href="\/\?ticker="/);
   assert.match(html, /href="\/\?remix=abcdef123456"/);
@@ -455,5 +457,7 @@ test("auth callback page stores token and validates returned state", () => {
 
   assert.match(html, /localStorage\.setItem\('authToken', token\)/);
   assert.match(html, /const returnedState = "state-123"/);
+  assert.match(html, /authReturnTo/);
+  assert.match(html, /location\.replace\(safeReturnTo\)/);
   assert.doesNotMatch(html, /access_token=/);
 });
