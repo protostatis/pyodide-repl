@@ -89,6 +89,7 @@
     #status.loading { background: #0c2d6b; color: #58a6ff; }
     #status.loading::before { animation: pulseDot 1.2s ease-in-out infinite; }
     .header-actions { display: flex; gap: 8px; align-items: center; }
+    .auth-user { color: #8b949e; font-size: 12px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .header-actions button {
       padding: 5px 12px; font-size: 12px; background: #21262d;
       border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; cursor: pointer;
@@ -395,6 +396,75 @@
     }
     .hidden { display: none !important; }
 
+    /* Publish review dialog */
+    #publish-dialog {
+      position: fixed; inset: 0; z-index: 200; display: none;
+      align-items: center; justify-content: center; padding: 22px;
+      background: rgba(6, 8, 12, 0.72); backdrop-filter: blur(10px);
+    }
+    #publish-dialog.open { display: flex; }
+    .publish-sheet {
+      width: min(760px, 100%); max-height: min(820px, calc(100vh - 44px)); overflow: auto;
+      background: #11151f; border: 1px solid #30363d; border-radius: 18px;
+      box-shadow: 0 28px 90px rgba(0,0,0,.48), 0 0 0 1px rgba(88,166,255,.08) inset;
+    }
+    .publish-head {
+      display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: start;
+      padding: 22px 24px 18px; border-bottom: 1px solid #21262d;
+      background: linear-gradient(135deg, rgba(88,166,255,.08), rgba(110,64,201,.08));
+    }
+    .publish-eyebrow {
+      color: #58a6ff; font-size: 11px; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; margin-bottom: 7px;
+    }
+    .publish-head h2 { color: #f0f6fc; font-size: 22px; line-height: 1.15; margin-bottom: 6px; }
+    .publish-head p { color: #8b949e; font-size: 13px; line-height: 1.5; max-width: 560px; }
+    .publish-close {
+      border: 1px solid #30363d; background: #161b22; color: #8b949e; border-radius: 10px;
+      width: 36px; height: 36px; cursor: pointer; font-size: 20px; line-height: 1;
+    }
+    .publish-form { padding: 22px 24px 24px; display: grid; gap: 16px; }
+    .publish-field { display: grid; gap: 7px; }
+    .publish-field label {
+      color: #c9d1d9; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .publish-field small { color: #6e7681; font-size: 12px; line-height: 1.45; }
+    .publish-input, .publish-textarea, .publish-select {
+      width: 100%; border: 1px solid #30363d; background: #0d1117; color: #e6edf3;
+      border-radius: 12px; padding: 12px 13px; font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      outline: none; transition: border-color .15s, box-shadow .15s;
+    }
+    .publish-textarea { min-height: 128px; resize: vertical; }
+    .publish-input:focus, .publish-textarea:focus, .publish-select:focus {
+      border-color: #58a6ff; box-shadow: 0 0 0 3px rgba(88,166,255,.14);
+    }
+    .publish-grid { display: grid; grid-template-columns: 1fr 210px; gap: 14px; }
+    .publish-issues {
+      display: none; border: 1px solid rgba(248,81,73,.38); background: rgba(248,81,73,.08);
+      color: #ffd8d5; border-radius: 12px; padding: 12px 14px; font-size: 13px; line-height: 1.45;
+    }
+    .publish-issues.visible { display: block; }
+    .publish-issues ul { margin: 8px 0 0 18px; }
+    .publish-actions {
+      display: flex; justify-content: space-between; gap: 12px; align-items: center;
+      padding-top: 4px;
+    }
+    .publish-actions .publish-note { color: #6e7681; font-size: 12px; line-height: 1.4; }
+    .publish-buttons { display: flex; gap: 10px; }
+    .publish-secondary, .publish-primary {
+      border-radius: 10px; padding: 10px 16px; cursor: pointer; font-size: 13px; font-weight: 700;
+      border: 1px solid #30363d;
+    }
+    .publish-secondary { background: #161b22; color: #c9d1d9; }
+    .publish-primary { background: #58a6ff; color: #07111f; border-color: #58a6ff; }
+    .publish-primary:disabled { opacity: .55; cursor: not-allowed; }
+    @media (max-width: 720px) {
+      .publish-grid { grid-template-columns: 1fr; }
+      .publish-actions { flex-direction: column; align-items: stretch; }
+      .publish-buttons { justify-content: flex-end; }
+    }
+
     /* Image / chart output */
     .cell-output img { max-width: 100%; border-radius: 6px; display: block; }
   </style>
@@ -407,8 +477,10 @@
     </div>
     <div class="header-actions">
       <button id="new-btn" title="New notebook">New</button>
-      <button id="save-btn" title="Save & share" class="hidden">Share</button>
+      <button id="save-btn" title="Publish a shareable insight" class="hidden">Publish insight</button>
       <button id="add-top-btn" title="Add cell">+ Cell</button>
+      <span id="auth-user" class="auth-user hidden"></span>
+      <button id="auth-btn" title="Sign in">Sign in</button>
     </div>
   </header>
 
@@ -430,6 +502,54 @@
 
   <!-- Notebook: hidden until data is loaded -->
   <div id="notebook" class="hidden"></div>
+
+  <div id="publish-dialog" role="dialog" aria-modal="true" aria-labelledby="publish-title" aria-hidden="true">
+    <div class="publish-sheet">
+      <div class="publish-head">
+        <div>
+          <div class="publish-eyebrow">Publish insight</div>
+          <h2 id="publish-title">Prepare a readable public artifact</h2>
+          <p>Write the claim in plain English. Code, schema checks, and exploratory logs stay in the reproducibility notes.</p>
+        </div>
+        <button type="button" class="publish-close" id="publish-close" aria-label="Close publish dialog">&times;</button>
+      </div>
+      <form class="publish-form" id="publish-form">
+        <div class="publish-field">
+          <label for="publish-title-input">Public title</label>
+          <input class="publish-input" id="publish-title-input" name="title" maxlength="140" autocomplete="off">
+          <small>The headline readers see in social cards and on the published page.</small>
+        </div>
+        <div class="publish-field">
+          <label for="publish-takeaway-input">Finished takeaway</label>
+          <textarea class="publish-textarea" id="publish-takeaway-input" name="takeaway" maxlength="500"></textarea>
+          <small>Answer the headline. Do not paste code, schema discovery, table dumps, or raw logs.</small>
+        </div>
+        <div class="publish-grid">
+          <div class="publish-field">
+            <label for="publish-description-input">Optional description</label>
+            <input class="publish-input" id="publish-description-input" name="description" maxlength="280" autocomplete="off">
+            <small>Short context for readers. Leave blank if the takeaway already says it.</small>
+          </div>
+          <div class="publish-field">
+            <label for="publish-visibility-input">Visibility</label>
+            <select class="publish-select" id="publish-visibility-input" name="visibility">
+              <option value="public">Public</option>
+              <option value="unlisted">Unlisted</option>
+            </select>
+            <small>Public pages must pass quality checks before publishing.</small>
+          </div>
+        </div>
+        <div class="publish-issues" id="publish-issues" role="alert"></div>
+        <div class="publish-actions">
+          <div class="publish-note">The URL is copied automatically after publishing.</div>
+          <div class="publish-buttons">
+            <button type="button" class="publish-secondary" id="publish-cancel">Cancel</button>
+            <button type="submit" class="publish-primary" id="publish-submit">Publish insight</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script src="/main.js"></script>
   <script>
@@ -477,9 +597,76 @@
     const dataGrid = document.getElementById('data-grid');
     const fileInput = document.getElementById('file-input');
     const dropOverlay = document.getElementById('drop-overlay');
+    const saveBtn = document.getElementById('save-btn');
+    const authUserEl = document.getElementById('auth-user');
+    const authBtn = document.getElementById('auth-btn');
+    const publishDialog = document.getElementById('publish-dialog');
+    const publishForm = document.getElementById('publish-form');
+    const publishTitleInput = document.getElementById('publish-title-input');
+    const publishTakeawayInput = document.getElementById('publish-takeaway-input');
+    const publishDescriptionInput = document.getElementById('publish-description-input');
+    const publishVisibilityInput = document.getElementById('publish-visibility-input');
+    const publishIssues = document.getElementById('publish-issues');
+    const publishSubmit = document.getElementById('publish-submit');
+    const AUTH_PROVIDER_URL = window.__AUTH_PROVIDER_URL || 'https://unchainedsky.com';
     let ready = false;
     let cellCounter = 0;
     let runningCell = null;
+
+    // Display only. The server verifies JWT signatures on every authenticated request.
+    function decodeJwtPayloadUnsafe(token) {
+      try {
+        const payload = token.split('.')[1];
+        if (!payload) return {};
+        const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+        return JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')));
+      } catch {
+        return {};
+      }
+    }
+
+    function renderAuthUi() {
+      const token = localStorage.getItem('authToken') || '';
+      if (token) {
+        const user = decodeJwtPayloadUnsafe(token);
+        authUserEl.textContent = user.name || user.email || 'Signed in';
+        authUserEl.classList.remove('hidden');
+        authBtn.textContent = 'Sign out';
+        authBtn.title = 'Sign out';
+      } else {
+        authUserEl.textContent = '';
+        authUserEl.classList.add('hidden');
+        authBtn.textContent = 'Sign in';
+        authBtn.title = 'Sign in';
+      }
+    }
+
+    window.__startSignIn = function(intent) {
+      const authIntent = intent || 'signin';
+      sessionStorage.setItem('authIntent', authIntent);
+      if (['localhost', '127.0.0.1', '0.0.0.0', '[::1]'].includes(location.hostname)) {
+        location.href = `/auth/dev-token?intent=${encodeURIComponent(authIntent)}`;
+        return;
+      }
+      const authState = crypto.getRandomValues(new Uint32Array(4)).join('-');
+      sessionStorage.setItem('authState', authState);
+      const loginUrl = new URL('/auth/login', AUTH_PROVIDER_URL);
+      loginUrl.searchParams.set('redirect_uri', `${location.origin}/auth/callback`);
+      loginUrl.searchParams.set('scope', 'share');
+      loginUrl.searchParams.set('state', authState);
+      loginUrl.searchParams.set('intent', authIntent);
+      location.href = loginUrl.toString();
+    };
+
+    authBtn.addEventListener('click', () => {
+      if (localStorage.getItem('authToken')) {
+        localStorage.removeItem('authToken');
+        renderAuthUi();
+      } else {
+        window.__startSignIn('signin');
+      }
+    });
+    renderAuthUi();
 
     // --- Render Your Data section first (upload tile) ---
     (function renderUploadSection() {
@@ -630,10 +817,17 @@
     }
 
     // --- Transition from landing to notebook ---
+    function showPublishButton() {
+      saveBtn.textContent = 'Publish insight';
+      saveBtn.title = 'Publish a shareable insight';
+      saveBtn.classList.remove('hidden');
+      document.title = 'Publish a shareable insight';
+    }
+
     function startNotebook(loadCode, firstQuestion, autoRun) {
       landing.classList.add('hidden');
       notebook.classList.remove('hidden');
-      document.getElementById('save-btn').classList.remove('hidden');
+      showPublishButton();
       notebook.innerHTML = '';
       window._lastContext = '{"namespace":[],"recentTurns":[]}';
 
@@ -671,7 +865,7 @@
     function loadFromSlug(session) {
       landing.classList.add('hidden');
       notebook.classList.remove('hidden');
-      document.getElementById('save-btn').classList.remove('hidden');
+      showPublishButton();
       notebook.innerHTML = '';
       window._lastContext = '{"namespace":[],"recentTurns":[]}';
 
@@ -728,7 +922,267 @@
       return copied;
     }
 
-    async function saveNotebook() {
+    function inferInsightTitle(cells) {
+      const source = cells.find(c => c.type === 'ask' && c.code.trim()) || cells.find(c => c.type === 'code' && c.code.trim());
+      if (!source) return 'Untitled insight';
+      return cleanPublicTitle(source.code.replace(/^#+\s*/, '').replace(/\s+/g, ' ').trim().slice(0, 100) || 'Untitled insight');
+    }
+
+    function normalizePublishText(value) {
+      return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    function cleanPublicTitle(value) {
+      const text = String(value || '').replace(/\s+/g, ' ').trim();
+      if (!text) return 'Untitled insight';
+      return text[0].toUpperCase() + text.slice(1);
+    }
+
+    function isPublishQuestion(value) {
+      const text = String(value || '').trim();
+      return /\?\s*$/.test(text) || /^(who|what|which|why|how|where|when|is|are|does|do|can|should|could|would)\b/i.test(text);
+    }
+
+    function isPublishLoadLog(value) {
+      const text = String(value || '').trim();
+      return /^loaded\s+[\w./-]+:\s*\d[\d,]*\s+rows?\s*(?:x|\u00d7)\s*\d+\s+cols?/i.test(text)
+        || /^loaded\s+[^:]+:\s*\d[\d,]*\s+rows?(?:\s*,\s*\d{4}-\d{2}-\d{2}\s+to\s+\d{4}-\d{2}-\d{2})?\s*$/i.test(text)
+        || /^\d[\d,]*\s+rows?\s*(?:x|\u00d7)\s*\d+\s+cols?/i.test(text);
+    }
+
+    function isPublishUnfinished(value) {
+      return /\b(you would need to|need to filter|need to analyze|doesn't directly show|does not directly show|current output doesn't|current output does not|not enough information|cannot determine|could not determine)\b/i.test(String(value || ''));
+    }
+
+    function isPublishCodeLike(value) {
+      const text = String(value || '').slice(0, 3000);
+      if (!text.trim()) return false;
+      if (/schema discovery|print\(|show_df\(|await\s+load_url|pd\.read_csv|df(?:\[|\.)|\.value_counts\(|\.groupby\(|\.sort_values\(|\.dtypes|\.columns|#\s*inspect/i.test(text)) return true;
+      return [/\bimport\s+\w+/i, /\bfor\s+\w+\s+in\s+/i, /\bif\s+.+:/i, /\n\s{2,}\w+/, /\w+\s*=\s*.+/].filter(pattern => pattern.test(text)).length >= 2;
+    }
+
+    function isMeaningfulPublishOutput(value) {
+      const text = String(value || '').trim();
+      if (!text) return false;
+      if (isPublishLoadLog(text) || isPublishUnfinished(text)) return false;
+      if (/^Inspect\b/i.test(text) || /Export:CSVJSONExcel/.test(text) || isPublishCodeLike(text)) return false;
+      return true;
+    }
+
+    function inferInsightTakeaway(cells, title) {
+      const answer = [...cells].reverse().map(c => c.summary || c.outputText || '').find(isMeaningfulPublishOutput) || '';
+      const cleaned = answer.replace(/\s+/g, ' ').trim().slice(0, 420);
+      return normalizePublishText(cleaned) === normalizePublishText(title) ? '' : cleaned;
+    }
+
+    function getPublishQualityIssues(payload) {
+      const titleKey = normalizePublishText(payload.title);
+      const descriptionKey = normalizePublishText(payload.description);
+      const takeawayKey = normalizePublishText(payload.takeaway);
+      const outputs = (payload.cells || []).map(c => c.summary || c.outputText || '').filter(Boolean);
+      const issues = [];
+      if (!titleKey || titleKey === 'untitled insight') issues.push('Add a specific public title.');
+      if (!takeawayKey || takeawayKey === titleKey || isPublishQuestion(payload.takeaway)) issues.push('Add a finished takeaway that answers the headline.');
+      if (descriptionKey && descriptionKey === titleKey && descriptionKey === takeawayKey) issues.push('Do not reuse the same text for title, description, and takeaway.');
+      if ([payload.description, payload.takeaway].some(isPublishLoadLog)) issues.push('Replace load logs with reader-facing copy.');
+      if ([payload.title, payload.description, payload.takeaway].some(isPublishCodeLike)) issues.push('Replace code or schema-discovery output with reader-facing copy.');
+      if (!outputs.some(isMeaningfulPublishOutput)) issues.push('Add at least one evidence summary, not just a load log or table dump.');
+      if (outputs.some(isPublishUnfinished)) issues.push('Finish the analysis before publishing; the current output says more filtering is needed.');
+      return [...new Set(issues)];
+    }
+
+    function getPublishCellOutput(cell, output) {
+      if (!output) return { outputText: '', summary: '' };
+      const agentSummary = output.querySelector('.agent-summary')?.textContent.trim() || '';
+      if (cell.dataset.type === 'ask' && agentSummary) {
+        return { outputText: agentSummary, summary: agentSummary };
+      }
+      return { outputText: output.textContent.trim(), summary: agentSummary };
+    }
+
+    function collectInsightPayload() {
+      const cells = Array.from(notebook.querySelectorAll('.cell')).map(cell => {
+        const code = cell.querySelector('.cell-input').value;
+        const output = cell.querySelector('.cell-output');
+        const publishOutput = getPublishCellOutput(cell, output);
+        return {
+          type: cell.dataset.type,
+          code,
+          outputText: publishOutput.outputText,
+          outputHtml: '',
+          summary: publishOutput.summary,
+        };
+      }).filter(c => c.code.trim());
+
+      const title = inferInsightTitle(cells);
+      const takeaway = inferInsightTakeaway(cells, title);
+      return {
+        title,
+        description: '',
+        takeaway,
+        visibility: 'public',
+        cells,
+      };
+    }
+    window.collectInsightPayload = collectInsightPayload;
+
+    async function postInsight(payload) {
+      const token = localStorage.getItem('authToken') || '';
+      let lastError;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const resp = await fetch('/api/insights', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (resp.ok) return data;
+          lastError = new Error(data.error || 'Publish failed');
+          if (resp.status < 500) break;
+        } catch (err) {
+          lastError = err;
+        }
+        await new Promise(resolve => setTimeout(resolve, 350));
+      }
+      throw lastError || new Error('Publish failed');
+    }
+
+    async function finishInsightPublish(payload) {
+      const btn = saveBtn;
+      btn.disabled = true;
+      publishSubmit.disabled = true;
+      btn.textContent = 'Publishing...';
+      publishSubmit.textContent = 'Publishing...';
+      try {
+        const data = await postInsight(payload);
+        sessionStorage.removeItem('pendingInsightPublish');
+        const path = data.url || `/i/${data.id}-${data.slug}`;
+        const url = new URL(path, location.origin).toString();
+        await copyShareUrl(url);
+        location.href = path;
+      } catch (err) {
+        console.error('Publish failed:', err);
+        openPublishDialog(payload);
+        renderPublishError(err.message || 'Publish failed');
+        btn.disabled = false;
+        publishSubmit.disabled = false;
+        btn.textContent = 'Publish insight';
+        publishSubmit.textContent = 'Publish insight';
+      }
+    }
+
+    function renderPublishMessages(heading, messages) {
+      if (!messages.length) {
+        publishIssues.classList.remove('visible');
+        publishIssues.textContent = '';
+        return;
+      }
+      publishIssues.classList.add('visible');
+
+      const title = document.createElement('strong');
+      title.textContent = heading;
+      const list = document.createElement('ul');
+      messages.forEach(message => {
+        const item = document.createElement('li');
+        item.textContent = message;
+        list.appendChild(item);
+      });
+
+      publishIssues.replaceChildren(title, list);
+    }
+
+    function renderPublishIssues(issues) {
+      renderPublishMessages('Needs a cleaner public version:', issues);
+    }
+
+    function renderPublishError(message) {
+      renderPublishMessages('Publish failed:', [message]);
+    }
+
+    function buildPublishPayloadFromDialog(basePayload) {
+      const cleanTitle = cleanPublicTitle(publishTitleInput.value.trim() || basePayload.title);
+      const cleanTakeaway = publishTakeawayInput.value.trim();
+      const cleanDescription = publishDescriptionInput.value.trim();
+      const visibility = publishVisibilityInput.value === 'unlisted' ? 'unlisted' : 'public';
+      return {
+        ...basePayload,
+        title: cleanTitle,
+        takeaway: cleanTakeaway,
+        description: cleanDescription && normalizePublishText(cleanDescription) !== normalizePublishText(cleanTitle) ? cleanDescription : '',
+        visibility,
+      };
+    }
+
+    function closePublishDialog() {
+      publishDialog.classList.remove('open');
+      publishDialog.setAttribute('aria-hidden', 'true');
+      publishForm._basePayload = null;
+      renderPublishIssues([]);
+    }
+
+    function openPublishDialog(payload) {
+      publishForm._basePayload = payload;
+      publishTitleInput.value = payload.title || '';
+      publishTakeawayInput.value = payload.takeaway || '';
+      publishDescriptionInput.value = payload.description || '';
+      publishVisibilityInput.value = payload.visibility || 'public';
+      publishSubmit.disabled = false;
+      publishSubmit.textContent = 'Publish insight';
+      renderPublishIssues(getPublishQualityIssues(buildPublishPayloadFromDialog(payload)));
+      publishDialog.classList.add('open');
+      publishDialog.setAttribute('aria-hidden', 'false');
+      setTimeout(() => publishTitleInput.focus(), 0);
+    }
+
+    async function submitPublishDialog() {
+      const basePayload = publishForm._basePayload || collectInsightPayload();
+      const publishPayload = buildPublishPayloadFromDialog(basePayload);
+      const qualityIssues = publishPayload.visibility === 'public' ? getPublishQualityIssues(publishPayload) : [];
+      renderPublishIssues(qualityIssues);
+      if (qualityIssues.length) return;
+
+      closePublishDialog();
+      if (!localStorage.getItem('authToken')) {
+        sessionStorage.setItem('pendingInsightPublish', JSON.stringify(publishPayload));
+        window.__startSignIn('publish');
+        return;
+      }
+
+      await finishInsightPublish(publishPayload);
+    }
+
+    function publishNotebookInsight() {
+      const payload = collectInsightPayload();
+      openPublishDialog(payload);
+    }
+
+    publishForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      submitPublishDialog();
+    });
+    document.getElementById('publish-close').addEventListener('click', closePublishDialog);
+    document.getElementById('publish-cancel').addEventListener('click', closePublishDialog);
+    publishDialog.addEventListener('click', (event) => {
+      if (event.target === publishDialog) closePublishDialog();
+    });
+    [publishTitleInput, publishTakeawayInput, publishDescriptionInput, publishVisibilityInput].forEach(input => {
+      input.addEventListener('input', () => {
+        const basePayload = publishForm._basePayload || collectInsightPayload();
+        const candidate = buildPublishPayloadFromDialog(basePayload);
+        renderPublishIssues(candidate.visibility === 'public' ? getPublishQualityIssues(candidate) : []);
+      });
+      input.addEventListener('change', () => {
+        const basePayload = publishForm._basePayload || collectInsightPayload();
+        const candidate = buildPublishPayloadFromDialog(basePayload);
+        renderPublishIssues(candidate.visibility === 'public' ? getPublishQualityIssues(candidate) : []);
+      });
+    });
+
+    async function saveNotebookSlug() {
       const cells = Array.from(notebook.querySelectorAll('.cell')).map(cell => {
         const code = cell.querySelector('.cell-input').value;
         const output = cell.querySelector('.cell-output');
@@ -751,25 +1205,27 @@
           const btn = document.getElementById('save-btn');
           btn.title = url;
           btn.textContent = copied ? 'Copied!' : 'Saved';
-          setTimeout(() => { btn.textContent = 'Share'; }, 2000);
+          setTimeout(() => { btn.textContent = 'Publish insight'; }, 2000);
         }
       } catch (err) {
         console.error('Save failed:', err);
       }
     }
+    window.saveNotebookSlug = saveNotebookSlug;
 
     // --- "New" button: reset to landing ---
     document.getElementById('new-btn').addEventListener('click', () => {
       notebook.classList.add('hidden');
-      document.getElementById('save-btn').classList.add('hidden');
+      saveBtn.classList.add('hidden');
       notebook.innerHTML = '';
       landing.classList.remove('hidden');
       cellCounter = 0;
+      document.title = 'pyreplab notebook';
       history.replaceState(null, '', '/');
     });
 
-    // --- Share button ---
-    document.getElementById('save-btn').addEventListener('click', saveNotebook);
+    // --- Publish button ---
+    saveBtn.addEventListener('click', publishNotebookInsight);
 
     // --- "+ Cell" button ---
     document.getElementById('add-top-btn').addEventListener('click', () => {
@@ -1238,6 +1694,28 @@
           statusEl.className = 'loading';
         }
       } catch {}
+    })();
+
+    // --- Resume publish after auth redirect ---
+    (async function() {
+      const token = localStorage.getItem('authToken') || '';
+      const pending = sessionStorage.getItem('pendingInsightPublish');
+      if (!token || !pending) return;
+      try {
+        const payload = JSON.parse(pending);
+        const data = await postInsight(payload);
+        sessionStorage.removeItem('pendingInsightPublish');
+        const path = data.url || `/i/${data.id}-${data.slug}`;
+        const url = new URL(path, location.origin).toString();
+        await copyShareUrl(url);
+        location.href = path;
+      } catch (err) {
+        console.error('Publish resume failed:', err);
+        let payload;
+        try { payload = JSON.parse(pending); } catch { payload = collectInsightPayload(); }
+        openPublishDialog(payload);
+        renderPublishError(err.message || 'Could not resume publishing. Please review and try again.');
+      }
     })();
   </script>
 </body>

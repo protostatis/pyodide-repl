@@ -5,9 +5,11 @@
   "description": "Browser-based Python REPL via Pyodide, commanded by agents over WebSocket",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test_server_security.js test_client_assets.js"
+    "test": "node --test test_server_security.js test_client_assets.js test_insights.js"
   },
   "dependencies": {
+    "better-sqlite3": "11.10.0",
+    "jsonwebtoken": "9.0.3",
     "ws": "^8.18.0"
   }
 }
