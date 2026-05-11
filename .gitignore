@@ -1,3 +1,6 @@
 node_modules/
 .env
 slugs/
+.playwright-cli/
+__pycache__/
+insights.db*

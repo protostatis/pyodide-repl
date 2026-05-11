@@ -6,8 +6,10 @@ process.env.NODE_ENV = "test";
 
 const {
   assertSafeProxyUrl,
+  getRequestOrigin,
   isBlockedAddress,
   resolvePublicFilePath,
+  sourceHrefAttrs,
 } = await import("./server.js");
 
 const root = resolve("public");
@@ -55,4 +57,23 @@ test("proxy URL safety rejects local targets without network lookup", async () =
   );
 
   await assert.doesNotReject(() => assertSafeProxyUrl(new URL("https://8.8.8.8/")));
+});
+
+test("request origin respects forwarded https headers and production default", () => {
+  assert.equal(getRequestOrigin({ headers: { host: "localhost:3000" } }), "http://localhost:3000");
+  assert.equal(getRequestOrigin({ headers: { host: "internal:3000", "x-forwarded-proto": "https", "x-forwarded-host": "analytics.example.com" } }), "https://analytics.example.com");
+
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  try {
+    assert.equal(getRequestOrigin({ headers: { host: "analytics.example.com" } }), "https://analytics.example.com");
+  } finally {
+    process.env.NODE_ENV = previousNodeEnv;
+  }
+});
+
+test("source href attrs reject protocol-relative links", () => {
+  assert.equal(sourceHrefAttrs("//evil.example/data.csv"), "");
+  assert.match(sourceHrefAttrs("/ai_demand_facts.csv"), /href="\/ai_demand_facts\.csv"/);
+  assert.match(sourceHrefAttrs("https://example.com/data.csv"), /rel="noopener"/);
 });
