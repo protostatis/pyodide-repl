@@ -287,7 +287,7 @@ function getInsightQualityIssues(data) {
   if ([description, takeaway].some(isLoadLogOutput)) issues.push("Replace load logs with reader-facing copy.");
   if ([title, description, takeaway].some(isCodeLikeText)) issues.push("Replace code or schema-discovery output with reader-facing copy.");
   if (!evidenceFacts.length && !hasMeaningfulOutput) issues.push("Add at least one evidence summary, not just a load log or table dump.");
-  if (!evidenceFacts.length && outputs.some(isUnfinishedOutput)) issues.push("Finish the analysis before publishing; the current output says more filtering is needed.");
+  if (!evidenceFacts.length && !hasMeaningfulOutput && outputs.some(isUnfinishedOutput)) issues.push("Finish the analysis before publishing; the current output says more filtering is needed.");
 
   return [...new Set(issues)];
 }

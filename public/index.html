@@ -986,14 +986,15 @@
       const descriptionKey = normalizePublishText(payload.description);
       const takeawayKey = normalizePublishText(payload.takeaway);
       const outputs = (payload.cells || []).map(c => c.summary || c.outputText || '').filter(Boolean);
+      const hasMeaningfulOutput = outputs.some(isMeaningfulPublishOutput);
       const issues = [];
       if (!titleKey || titleKey === 'untitled insight') issues.push('Add a specific public title.');
       if (!takeawayKey || takeawayKey === titleKey || isPublishQuestion(payload.takeaway)) issues.push('Add a finished takeaway that answers the headline.');
       if (descriptionKey && descriptionKey === titleKey && descriptionKey === takeawayKey) issues.push('Do not reuse the same text for title, description, and takeaway.');
       if ([payload.description, payload.takeaway].some(isPublishLoadLog)) issues.push('Replace load logs with reader-facing copy.');
       if ([payload.title, payload.description, payload.takeaway].some(isPublishCodeLike)) issues.push('Replace code or schema-discovery output with reader-facing copy.');
-      if (!outputs.some(isMeaningfulPublishOutput)) issues.push('Add at least one evidence summary, not just a load log or table dump.');
-      if (outputs.some(isPublishUnfinished)) issues.push('Finish the analysis before publishing; the current output says more filtering is needed.');
+      if (!hasMeaningfulOutput) issues.push('Add at least one evidence summary, not just a load log or table dump.');
+      if (!hasMeaningfulOutput && outputs.some(isPublishUnfinished)) issues.push('Finish the analysis before publishing; the current output says more filtering is needed.');
       return [...new Set(issues)];
     }
 

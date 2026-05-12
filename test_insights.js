@@ -435,6 +435,29 @@ test("insight quality checks reject code and schema-discovery copy", () => {
   assert.doesNotMatch(html, /<p class="deck">Schema Discovery/);
 });
 
+test("insight quality checks allow finished summaries after exploratory dead ends", () => {
+  const payload = validateInsightPayload({
+    title: "Which buyers and suppliers are driving the spend?",
+    description: "",
+    takeaway: "Microsoft leads total spend, followed by NVIDIA and Amazon, with cost of revenue driving the largest categories.",
+    visibility: "public",
+    cells: [
+      {
+        type: "ask",
+        code: "which buyers and suppliers are driving the spend?",
+        summary: "The sample rows are not enough information; you would need to analyze the complete spend data grouped by company.",
+      },
+      {
+        type: "ask",
+        code: "can you review the results and summarize the insights",
+        summary: "The analysis covers 409 spend rows across 9 companies and 41 categories. Microsoft leads total spend, followed by NVIDIA and Amazon.",
+      },
+    ],
+  });
+
+  assert.deepEqual(getInsightQualityIssues(payload), []);
+});
+
 test("public insight page treats ticker load logs as draft copy", () => {
   const html = renderInsightHtml({
     id: "abcdef123466",
