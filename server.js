@@ -279,6 +279,8 @@ function getInsightQualityIssues(data) {
   const descriptionKey = normalizeForComparison(description);
   const outputs = cells.map(cellPublishText).filter(Boolean);
   const hasMeaningfulOutput = outputs.some(isMeaningfulEvidenceText);
+  const lastUnfinishedOutputIndex = outputs.reduce((last, output, index) => isUnfinishedOutput(output) ? index : last, -1);
+  const hasUnresolvedUnfinishedOutput = lastUnfinishedOutputIndex >= 0 && !outputs.slice(lastUnfinishedOutputIndex + 1).some(isMeaningfulEvidenceText);
   const issues = [];
 
   if (!titleKey || titleKey === "untitled insight") issues.push("Add a specific public title.");
@@ -287,7 +289,7 @@ function getInsightQualityIssues(data) {
   if ([description, takeaway].some(isLoadLogOutput)) issues.push("Replace load logs with reader-facing copy.");
   if ([title, description, takeaway].some(isCodeLikeText)) issues.push("Replace code or schema-discovery output with reader-facing copy.");
   if (!evidenceFacts.length && !hasMeaningfulOutput) issues.push("Add at least one evidence summary, not just a load log or table dump.");
-  if (!evidenceFacts.length && outputs.some(isUnfinishedOutput)) issues.push("Finish the analysis before publishing; the current output says more filtering is needed.");
+  if (!evidenceFacts.length && hasUnresolvedUnfinishedOutput) issues.push("Finish the analysis before publishing; the current output says more filtering is needed.");
 
   return [...new Set(issues)];
 }

@@ -960,6 +960,11 @@
       return /\b(you would need to|need to filter|need to analyze|doesn't directly show|does not directly show|current output doesn't|current output does not|not enough information|cannot determine|could not determine)\b/i.test(String(value || ''));
     }
 
+    function isPublishRawTableDump(value) {
+      const text = String(value || '');
+      return /Export:CSVJSONExcel/.test(text) || /\d[\d,]*\s+rows?\s*\u00d7\s*\d+\s+columns/i.test(text);
+    }
+
     function isPublishCodeLike(value) {
       const text = String(value || '').slice(0, 3000);
       if (!text.trim()) return false;
@@ -971,7 +976,7 @@
       const text = String(value || '').trim();
       if (!text) return false;
       if (isPublishLoadLog(text) || isPublishUnfinished(text)) return false;
-      if (/^Inspect\b/i.test(text) || /Export:CSVJSONExcel/.test(text) || isPublishCodeLike(text)) return false;
+      if (/^Inspect\b/i.test(text) || isPublishRawTableDump(text) || isPublishCodeLike(text)) return false;
       return true;
     }
 
@@ -986,14 +991,17 @@
       const descriptionKey = normalizePublishText(payload.description);
       const takeawayKey = normalizePublishText(payload.takeaway);
       const outputs = (payload.cells || []).map(c => c.summary || c.outputText || '').filter(Boolean);
+      const hasMeaningfulOutput = outputs.some(isMeaningfulPublishOutput);
+      const lastUnfinishedOutputIndex = outputs.reduce((last, output, index) => isPublishUnfinished(output) ? index : last, -1);
+      const hasUnresolvedUnfinishedOutput = lastUnfinishedOutputIndex >= 0 && !outputs.slice(lastUnfinishedOutputIndex + 1).some(isMeaningfulPublishOutput);
       const issues = [];
       if (!titleKey || titleKey === 'untitled insight') issues.push('Add a specific public title.');
       if (!takeawayKey || takeawayKey === titleKey || isPublishQuestion(payload.takeaway)) issues.push('Add a finished takeaway that answers the headline.');
       if (descriptionKey && descriptionKey === titleKey && descriptionKey === takeawayKey) issues.push('Do not reuse the same text for title, description, and takeaway.');
       if ([payload.description, payload.takeaway].some(isPublishLoadLog)) issues.push('Replace load logs with reader-facing copy.');
       if ([payload.title, payload.description, payload.takeaway].some(isPublishCodeLike)) issues.push('Replace code or schema-discovery output with reader-facing copy.');
-      if (!outputs.some(isMeaningfulPublishOutput)) issues.push('Add at least one evidence summary, not just a load log or table dump.');
-      if (outputs.some(isPublishUnfinished)) issues.push('Finish the analysis before publishing; the current output says more filtering is needed.');
+      if (!hasMeaningfulOutput) issues.push('Add at least one evidence summary, not just a load log or table dump.');
+      if (hasUnresolvedUnfinishedOutput) issues.push('Finish the analysis before publishing; the current output says more filtering is needed.');
       return [...new Set(issues)];
     }
 
