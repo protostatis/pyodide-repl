@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 
 process.env.NODE_ENV = "test";
@@ -27,6 +29,7 @@ test("insight payload validation caps unsafe or oversized fields", () => {
     description: "d".repeat(500),
     takeaway: "t".repeat(800),
     visibility: "private",
+    notebookSlug: "ABC123",
     evidenceFacts: [{
       metric: "13,019",
       label: "SEC facts",
@@ -46,6 +49,7 @@ test("insight payload validation caps unsafe or oversized fields", () => {
   assert.equal(payload.description.length, 280);
   assert.equal(payload.takeaway.length, 500);
   assert.equal(payload.visibility, "public");
+  assert.equal(payload.notebook.notebookSlug, "abc123");
   assert.equal(payload.notebook.cells.length, 100);
   assert.equal(payload.evidenceFacts.length, 1);
   assert.equal(payload.evidenceFacts[0].metric, "13,019");
@@ -115,6 +119,81 @@ test("public insight page escapes notebook source and output", () => {
   assert.doesNotMatch(html, /outputHtml/);
   assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+});
+
+test("public insight page renders sanitized chart and table proof previews", () => {
+  const html = renderInsightHtml({
+    id: "abcdef123457",
+    slug: "proof",
+    title: "Spend proof",
+    description: "",
+    takeaway: "The proof preview shows the spend table and chart.",
+    visibility: "public",
+    author: {},
+    notebook: {
+      notebookSlug: "abc124",
+      cells: [{
+        type: "code",
+        code: "show_df(df)",
+        outputText: "The proof preview shows the spend table and chart.",
+        outputHtml: `<div class="df-output"><img src="data:image/png;base64,iVBORw0KGgo=" onerror="alert(1)" style="background:url(javascript:alert(1))"><table class="df-table"><thead><tr><th></th><th>Company<script>alert(1)</script></th><th>Spend</th></tr></thead><tbody><tr><th>0</th><td>Meta</td><td><img src=x onerror=alert(1)>$10B</td></tr></tbody></table><script>alert(1)</script><img src="javascript:alert(1)"></div>`,
+      }],
+    },
+  }, "http://localhost:3000/i/abcdef123457-proof");
+
+  assert.match(html, /Proof from the notebook/);
+  assert.match(html, /Open notebook/);
+  assert.match(html, /href="\/s\/abc124"/);
+  assert.match(html, /Notebook chart preview/);
+  assert.match(html, /src="data:image\/png;base64,iVBORw0KGgo="/);
+  assert.match(html, /<table class="proof-table">/);
+  assert.match(html, /Meta/);
+  assert.match(html, /\$10B/);
+  assert.doesNotMatch(html, /onerror/);
+  assert.doesNotMatch(html, /javascript:alert/);
+  assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
+  assert.doesNotMatch(html, /<img src=x/);
+});
+
+test("public insight page can render proof previews from attached notebook slug", () => {
+  const slug = "abc125";
+  const path = join(process.cwd(), "slugs", `${slug}.json`);
+  writeFileSync(path, JSON.stringify({
+    slug,
+    cells: [{
+      type: "code",
+      code: "show_df(df)",
+      html: `<div class="df-output"><table class="df-table"><thead><tr><th>Company</th><th>Spend</th></tr></thead><tbody><tr><td>Amazon</td><td>$1.8T</td></tr></tbody></table></div>`,
+    }],
+  }));
+
+  try {
+    const html = renderInsightHtml({
+      id: "abcdef123458",
+      slug: "slug-proof",
+      title: "Slug proof",
+      description: "",
+      takeaway: "The attached notebook contains the supporting table.",
+      visibility: "public",
+      author: {},
+      notebook: {
+        notebookSlug: slug,
+        cells: [{
+          type: "code",
+          code: "show_df(df)",
+          outputText: "The attached notebook contains the supporting table.",
+          outputHtml: "",
+        }],
+      },
+    }, "http://localhost:3000/i/abcdef123458-slug-proof");
+
+    assert.match(html, /Proof from the notebook/);
+    assert.match(html, /Amazon/);
+    assert.match(html, /\$1\.8T/);
+    assert.match(html, /href="\/s\/abc125"/);
+  } finally {
+    unlinkSync(path);
+  }
 });
 
 test("public insight page renders dataset source metadata", () => {

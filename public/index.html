@@ -587,7 +587,7 @@
         { title: 'Health Spending', desc: 'Healthcare expenditure vs life expectancy by country', code: "df = await load_url('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/healthexp.csv')", ask: 'does spending more on healthcare improve life expectancy?' },
       ],
       'Research Data': [
-        { title: 'AI Demand Facts', desc: '13k+ SEC filing rows with spend, backlog, cash, and capex signals', code: "df = await load_url('/ai_demand_facts.csv')", ask: 'which buyers and suppliers are driving the spend?' },
+        { title: 'AI Demand Facts', desc: '13k+ SEC filing rows with spend, backlog, cash, and capex signals', code: "df = await load_url('/ai_demand_facts.csv')\nshow_df(df, limit=12)", ask: 'which buyers and suppliers are driving the spend?' },
       ],
     };
 
@@ -1006,6 +1006,12 @@
       return { outputText: output.textContent.trim(), summary: agentSummary };
     }
 
+    function getPublishProofHtml(output) {
+      if (!output) return '';
+      const proofNodes = Array.from(output.querySelectorAll('.df-output')).filter(node => node.querySelector('img, .df-table'));
+      return proofNodes.slice(0, 3).map(node => node.outerHTML).join('');
+    }
+
     function collectInsightPayload() {
       const cells = Array.from(notebook.querySelectorAll('.cell')).map(cell => {
         const code = cell.querySelector('.cell-input').value;
@@ -1015,7 +1021,7 @@
           type: cell.dataset.type,
           code,
           outputText: publishOutput.outputText,
-          outputHtml: '',
+          outputHtml: getPublishProofHtml(output),
           summary: publishOutput.summary,
         };
       }).filter(c => c.code.trim());

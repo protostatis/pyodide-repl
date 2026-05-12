@@ -193,9 +193,14 @@ function normalizeInsightCells(cells) {
     type: ["code", "ask"].includes(cell?.type) ? cell.type : "code",
     code: truncateText(cell?.code, 20000),
     outputText: truncateText(cell?.outputText ?? cell?.output, 30000),
-    outputHtml: truncateText(cell?.outputHtml, 30000),
+    outputHtml: truncateText(cell?.outputHtml, 350000),
     summary: truncateText(cell?.summary, 1000),
   }));
+}
+
+function normalizeNotebookSlug(value) {
+  const slug = String(value || "").trim().toLowerCase();
+  return /^[a-f0-9]{1,64}$/.test(slug) ? slug : "";
 }
 
 function normalizeEvidenceFacts(facts) {
@@ -301,9 +306,7 @@ function validateInsightPayload(payload) {
   const description = normalizeForComparison(rawDescription) === normalizeForComparison(title) ? "" : rawDescription;
   const takeaway = truncateText(payload.takeaway || description || title, 500);
   const visibility = payload.visibility === "unlisted" ? "unlisted" : "public";
-  const notebookSlug = /^[a-f0-9]+$/i.test(String(payload.notebookSlug || ""))
-    ? String(payload.notebookSlug).toLowerCase()
-    : "";
+  const notebookSlug = normalizeNotebookSlug(payload.notebookSlug);
   const notebook = {
     cells,
     dataset: payload.dataset && typeof payload.dataset === "object" ? payload.dataset : null,
@@ -353,6 +356,29 @@ function loadInsight(db, id) {
   const row = db.prepare("SELECT * FROM insights WHERE id = ?").get(id);
   if (!row) return null;
   return rowToInsight(row);
+}
+
+function loadNotebookSession(slug) {
+  const safeSlug = normalizeNotebookSlug(slug);
+  if (!safeSlug) return null;
+  const path = join(SLUGS_DIR, `${safeSlug}.json`);
+  if (!existsSync(path)) return null;
+  try {
+    const session = JSON.parse(readFileSync(path, "utf8"));
+    return Array.isArray(session?.cells) ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+function cellsWithNotebookProof(cells, notebookSlug) {
+  const session = loadNotebookSession(notebookSlug);
+  if (!session) return cells;
+  const sessionCells = session.cells || [];
+  return cells.map((cell, index) => ({
+    ...cell,
+    outputHtml: cell?.outputHtml || sessionCells[index]?.html || "",
+  }));
 }
 
 function rowToInsight(row) {
@@ -616,6 +642,84 @@ function renderEvidenceReceipts(evidenceFacts, fallbackText) {
   return `<article class="card"><p class="label">Why this matters</p><p class="evidence">${escapeHtml(fallbackText)}</p></article>`;
 }
 
+function decodeBasicHtmlEntities(value) {
+  const named = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+  return String(value || "").replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity) => {
+    const key = entity.toLowerCase();
+    if (key[0] === "#") {
+      const code = key[1] === "x" ? parseInt(key.slice(2), 16) : parseInt(key.slice(1), 10);
+      return Number.isFinite(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+    }
+    return Object.prototype.hasOwnProperty.call(named, key) ? named[key] : match;
+  });
+}
+
+function htmlToPlainText(value) {
+  return compactText(decodeBasicHtmlEntities(String(value || "")
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]+>/g, " ")));
+}
+
+function proofCaptionFromHtml(html, fallback) {
+  const text = htmlToPlainText(html);
+  const shape = text.match(/\d[\d,]*\s+rows?\s*(?:x|\u00d7)\s*\d+\s+columns?(?:,\s*showing\s+first\s+\d+)?/i);
+  return truncateText(shape ? shape[0] : fallback, 120);
+}
+
+function renderProofTable(tableHtml, caption, index) {
+  const rows = [...String(tableHtml || "").matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)]
+    .map((row) => [...row[1].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)]
+      .map((cell) => truncateText(htmlToPlainText(cell[1]), 80))
+      .slice(0, 8))
+    .filter((row) => row.some(Boolean));
+  if (!rows.length) return "";
+
+  const header = rows[0];
+  const body = rows.slice(1, 12);
+  const headerHtml = `<thead><tr>${header.map((cell) => `<th>${escapeHtml(cell)}</th>`).join("")}</tr></thead>`;
+  const bodyHtml = body.length
+    ? `<tbody>${body.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}</tbody>`
+    : "";
+  return `<figure class="proof-item proof-table-wrap"><figcaption>${escapeHtml(caption || `Table preview ${index + 1}`)}</figcaption><table class="proof-table">${headerHtml}${bodyHtml}</table></figure>`;
+}
+
+function renderProofImages(html, caption) {
+  const images = [];
+  for (const match of String(html || "").matchAll(/<img\b[^>]*\bsrc\s*=\s*(["'])([\s\S]*?)\1[^>]*>/gi)) {
+    const src = match[2].replace(/\s+/g, "");
+    if (src.length > 350000) continue;
+    if (!/^data:image\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=]+$/i.test(src)) continue;
+    images.push(`<figure class="proof-item proof-shot"><img src="${escapeAttr(src)}" alt="Notebook chart preview"><figcaption>${escapeHtml(caption || "Chart generated in the notebook")}</figcaption></figure>`);
+    if (images.length >= 2) break;
+  }
+  return images;
+}
+
+function renderProofPreviews(cells, notebookSlug) {
+  const previews = [];
+  for (const [index, cell] of cells.entries()) {
+    const html = String(cell?.outputHtml || "");
+    if (!html || previews.length >= 4) continue;
+    const caption = proofCaptionFromHtml(html, traceCellTitle(cell, index));
+    for (const image of renderProofImages(html, caption)) {
+      previews.push(image);
+      if (previews.length >= 4) break;
+    }
+    if (previews.length >= 4) break;
+    for (const table of html.match(/<table\b[\s\S]*?<\/table>/gi) || []) {
+      const rendered = renderProofTable(table, caption, index);
+      if (rendered) previews.push(rendered);
+      if (previews.length >= 4) break;
+    }
+  }
+  if (!previews.length) return "";
+
+  const notebookCta = notebookSlug ? `<a class="proof-link" href="/s/${escapeAttr(notebookSlug)}">Open notebook</a>` : "";
+  return `<section class="card proof-card"><div class="proof-head"><div><p class="label">Proof from the notebook</p><p class="muted">Charts and table previews are sanitized snapshots from the executed cells.</p></div>${notebookCta}</div><div class="proof-grid">${previews.join("")}</div></section>`;
+}
+
 function renderInsightSource(source) {
   const title = source.label || source.source || source.url || "Published analysis";
   const details = [
@@ -734,7 +838,9 @@ function renderSourceWork(cells, sources) {
 }
 
 function renderInsightHtml(insight, canonicalUrl) {
-  const cells = Array.isArray(insight.notebook?.cells) ? insight.notebook.cells : [];
+  const baseCells = Array.isArray(insight.notebook?.cells) ? insight.notebook.cells : [];
+  const notebookSlug = normalizeNotebookSlug(insight.notebook?.notebookSlug);
+  const cells = cellsWithNotebookProof(baseCells, notebookSlug);
   const title = cleanInsightTitle(insight.title || "Untitled insight");
   const rawTakeaway = insight.takeaway || insight.description || title;
   const rawDescription = insight.description || "";
@@ -755,8 +861,8 @@ function renderInsightHtml(insight, canonicalUrl) {
   const encodedTitle = encodeURIComponent(title);
   const followUpHref = `/?q=${encodeURIComponent(`Ask a follow-up about ${title}`)}`;
   const remixHref = `/?remix=${encodeURIComponent(insight.id || "")}`;
-  const notebookSlug = /^[a-f0-9]+$/i.test(String(insight.notebook?.notebookSlug || "")) ? String(insight.notebook.notebookSlug).toLowerCase() : "";
   const notebookLink = notebookSlug ? `<a href="/s/${escapeAttr(notebookSlug)}">Open notebook</a>` : "";
+  const proofHtml = renderProofPreviews(cells, notebookSlug);
   const sourceWork = renderSourceWork(cells, sources);
   const published = insight.createdAt ? new Date(insight.createdAt).toISOString().slice(0, 10) : "Published memo";
   const primarySource = sources[0]?.label || sources[0]?.source || "Published analysis";
@@ -790,6 +896,7 @@ function renderInsightHtml(insight, canonicalUrl) {
   <style>.wrap{max-width:1120px;padding:22px 18px 56px}.masthead{border-block-color:#31382d;color:#a2aa98}.hero{grid-template-columns:minmax(0,1fr) 286px;gap:24px;padding:24px 0 18px}.kicker,.label{font-size:.68rem;margin-bottom:9px}.kicker:before{content:'// ';color:#d2a84c}h1{font-size:clamp(1.85rem,3.5vw,2.85rem);line-height:1.08;letter-spacing:-.032em;margin:0;max-width:790px}.deck{font-size:1rem;margin:12px 0 0}.stamp{padding:14px;box-shadow:6px 6px 0 rgba(166,255,115,.16)}.stamp strong{font-size:1rem;line-height:1.13}.layout{grid-template-columns:minmax(0,1fr) 292px;gap:20px;margin-top:18px}.stack{gap:14px}.card{padding:18px}.quality-card{border-color:#d3a84b}.takeaway{font-size:1.1rem;line-height:1.45}.sources{box-shadow:5px 5px 0 rgba(166,255,115,.12)}.source-item h3{font-size:1.08rem}.rail{top:14px}.share a,.buttons a{padding:10px 12px;font-size:.68rem}.work{margin-top:22px;padding-top:18px}@media (max-width:920px){.hero,.layout{grid-template-columns:1fr}.rail{position:static}h1{font-size:clamp(1.75rem,7vw,2.55rem)}} </style>
   <style>.datum-reel{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:14px;align-items:stretch;margin:16px 0 18px}.datum-reel.single{grid-template-columns:1fr}.datum-stage{position:relative;min-height:210px;background:#a6ff73;color:#080b0a;border:1px solid #d6ffc5;box-shadow:8px 8px 0 rgba(239,227,200,.16);padding:18px 20px;overflow:hidden}.datum-stage .label{color:#203517}.datum-card[hidden]{display:none}.datum-metric{font:900 clamp(3rem,12vw,7.4rem)/.82 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:-.1em;margin:8px 0 6px}.datum-label{font:900 clamp(1.1rem,3vw,2rem)/1.02 Georgia,'Times New Roman',serif;letter-spacing:-.04em;max-width:720px}.datum-card p{max-width:760px;margin:10px 0 0;color:#203517;font:700 .95rem/1.35 ui-monospace,SFMono-Regular,Menlo,monospace}.datum-controls{display:flex;flex-direction:column;justify-content:space-between;background:rgba(15,19,14,.94);border:1px solid #31382d;padding:14px}.datum-controls button{cursor:pointer;border:1px solid #3d4938;background:#11180f;color:#edf2e8;padding:10px 12px;font:800 .68rem/1 'Courier New',monospace;letter-spacing:.1em;text-transform:uppercase}.datum-controls button:hover,.datum-controls button:focus{border-color:#a6ff73;color:#a6ff73;outline:none}.datum-pips{display:flex;gap:7px;justify-content:center;flex-wrap:wrap}.datum-pips button{width:13px;height:13px;padding:0;border-radius:999px;background:#263024}.datum-pips button[aria-current=true]{background:#a6ff73}@media (max-width:760px){.datum-reel{grid-template-columns:1fr}.datum-controls{flex-direction:row;align-items:center}.datum-stage{min-height:190px}.datum-metric{font-size:clamp(3rem,22vw,5.5rem)}} </style>
   <style>.evidence-card{background:#10140f}.receipt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.receipt{border:1px solid #31382d;background:#080b0a;padding:14px;min-height:150px}.receipt-metric{color:#a6ff73;font:900 clamp(1.8rem,5vw,3.4rem)/.9 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:-.08em}.receipt-label{margin-top:5px;color:#fbfff7;font:800 .9rem/1.22 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.01em}.receipt p{margin:9px 0 0;color:#cbd5c2}.receipt-source{font-size:.78rem;color:#8f9a87}.receipt-source a{color:#a6ff73;overflow-wrap:anywhere}.work-summary{border:1px solid #31382d;background:#0b100c;padding:14px;margin:12px 0}.work-summary h3{margin-top:0}.work-summary ul{margin:0;padding-left:20px;color:#cbd5c2}.trace{margin-top:12px}.cell-label{margin:10px 0 4px;color:#9aa391;font:800 .68rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase}@media (max-width:760px){.receipt-grid{grid-template-columns:1fr}}</style>
+  <style>.proof-card{background:#0d120e;border-color:#3a4935}.proof-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:12px}.proof-head .muted{margin:0;color:#9aa391}.proof-link{border:1px solid #a6ff73;color:#a6ff73;text-decoration:none;padding:8px 10px;font:800 .68rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}.proof-link:hover{background:#a6ff73;color:#081008}.proof-grid{display:grid;gap:12px}.proof-item{margin:0;border:1px solid #31382d;background:#080b0a;overflow:auto}.proof-item figcaption{padding:10px 12px;color:#d3a84b;font:800 .68rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid #31382d}.proof-shot img{display:block;width:100%;height:auto}.proof-table{width:100%;border-collapse:collapse;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}.proof-table th,.proof-table td{padding:7px 9px;border-bottom:1px solid #20281f;text-align:left;vertical-align:top}.proof-table th{color:#a6ff73;background:#10170f;font-weight:800}.proof-table td{color:#dbe5d3}.proof-table tr:nth-child(even) td{background:rgba(255,255,255,.025)}@media (max-width:760px){.proof-head{display:grid}.proof-link{justify-self:start}}</style>
   <style>.trace{display:grid;gap:12px}.trace>h3{margin:0;color:#fbf7eb;font-size:1rem}.trace-cell{border:1px solid #31382d;background:#0a0f0b;padding:14px}.trace-head{display:flex;gap:12px;align-items:flex-start}.trace-index{display:inline-grid;place-items:center;min-width:34px;height:34px;border:1px solid #a6ff73;color:#a6ff73;font:800 .72rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}.trace-head h3{margin:0;color:#fbf7eb}.trace-head p{margin:3px 0 0;color:#9aa391;font:700 .72rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.06em}.trace-output{margin:0;color:#dbe5d3;line-height:1.55}.trace-code{max-height:220px}.raw-output{margin-top:10px}.raw-output summary{font-size:.72rem;color:#d3a84b}.raw-output pre{max-height:320px}</style>
   <script>document.addEventListener('DOMContentLoaded',()=>{const cards=[...document.querySelectorAll('[data-datum-card]')];if(cards.length<2)return;const pips=[...document.querySelectorAll('[data-datum-jump]')];let i=0;const show=n=>{i=(n+cards.length)%cards.length;cards.forEach((card,idx)=>{card.hidden=idx!==i;card.classList.toggle('active',idx===i)});pips.forEach((pip,idx)=>idx===i?pip.setAttribute('aria-current','true'):pip.removeAttribute('aria-current'))};document.querySelector('[data-datum-prev]')?.addEventListener('click',()=>show(i-1));document.querySelector('[data-datum-next]')?.addEventListener('click',()=>show(i+1));pips.forEach((pip,idx)=>pip.addEventListener('click',()=>show(idx)));if(!matchMedia('(prefers-reduced-motion: reduce)').matches)setInterval(()=>show(i+1),4200);});</script>
 </head>
@@ -802,6 +909,7 @@ function renderInsightHtml(insight, canonicalUrl) {
       ${qualityHtml}
       ${takeawayHtml}
       ${evidenceBlockHtml}
+      ${proofHtml}
       <section class="card sources"><p class="label">Where the numbers came from</p><div class="source-list">${sources.map(renderInsightSource).join("")}</div></section>
       <section class="card method"><p class="label">Check the work</p><p class="muted">The code and plain-text outputs are kept below so the result can be verified.</p></section>
     </div>
