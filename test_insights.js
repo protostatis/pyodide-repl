@@ -458,6 +458,24 @@ test("insight quality checks allow finished summaries after exploratory dead end
   assert.deepEqual(getInsightQualityIssues(payload), []);
 });
 
+test("insight quality checks still reject unresolved unfinished output", () => {
+  const payload = validateInsightPayload({
+    title: "Which buyers and suppliers are driving the spend?",
+    description: "",
+    takeaway: "The spend drivers need more analysis before publication.",
+    visibility: "public",
+    cells: [{
+      type: "ask",
+      code: "which buyers and suppliers are driving the spend?",
+      summary: "The sample rows are not enough information; you would need to analyze the complete spend data grouped by company.",
+    }],
+  });
+
+  const issues = getInsightQualityIssues(payload).join(" ");
+  assert.match(issues, /evidence summary/);
+  assert.match(issues, /current output says more filtering is needed/);
+});
+
 test("public insight page treats ticker load logs as draft copy", () => {
   const html = renderInsightHtml({
     id: "abcdef123466",
