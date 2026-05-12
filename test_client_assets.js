@@ -22,6 +22,8 @@ test("shared routes load client assets from the site root", () => {
   assert.match(index, /authReturnTo/);
   assert.match(index, /notebookSlug/);
   assert.match(index, /getPublishQualityIssues/);
+  assert.match(index, /isPublishAuthError/);
+  assert.match(index, /restartPublishSignIn/);
   assert.match(index, /isPublishCodeLike/);
   assert.match(index, /getPublishCellOutput/);
   assert.match(index, /getPublishProofHtml/);

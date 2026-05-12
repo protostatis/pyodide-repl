@@ -1062,6 +1062,7 @@
           const data = await resp.json().catch(() => ({}));
           if (resp.ok) return data;
           lastError = new Error(data.error || 'Publish failed');
+          lastError.status = resp.status;
           if (resp.status < 500) break;
         } catch (err) {
           lastError = err;
@@ -1069,6 +1070,17 @@
         await new Promise(resolve => setTimeout(resolve, 350));
       }
       throw lastError || new Error('Publish failed');
+    }
+
+    function isPublishAuthError(err) {
+      return err && err.status === 401;
+    }
+
+    function restartPublishSignIn(payload) {
+      localStorage.removeItem('authToken');
+      renderAuthUi();
+      sessionStorage.setItem('pendingInsightPublish', JSON.stringify(payload));
+      window.__startSignIn('publish');
     }
 
     async function finishInsightPublish(payload) {
@@ -1086,6 +1098,10 @@
         location.href = path;
       } catch (err) {
         console.error('Publish failed:', err);
+        if (isPublishAuthError(err)) {
+          restartPublishSignIn(payload);
+          return;
+        }
         openPublishDialog(payload);
         renderPublishError(err.message || 'Publish failed');
         btn.disabled = false;
@@ -1746,6 +1762,14 @@
         console.error('Publish resume failed:', err);
         let payload;
         try { payload = JSON.parse(pending); } catch { payload = collectInsightPayload(); }
+        if (isPublishAuthError(err)) {
+          localStorage.removeItem('authToken');
+          sessionStorage.removeItem('pendingInsightPublish');
+          renderAuthUi();
+          openPublishDialog(payload);
+          renderPublishError('Your sign-in was rejected. Please sign in again to publish.');
+          return;
+        }
         openPublishDialog(payload);
         renderPublishError(err.message || 'Could not resume publishing. Please review and try again.');
       }
