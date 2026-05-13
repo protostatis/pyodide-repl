@@ -27,13 +27,17 @@ from pathlib import Path
 BASE_URL = "https://huggingface.co/api/models"
 OUT_PATH = Path("public/hf_model_pulse.csv")
 AI_DEMAND_FACTS_PATH = Path("public/ai_demand_facts.csv")
-USER_AGENT = "pyodide-repl hf model pulse builder"
+USER_AGENT = os.environ.get(
+    "HF_MODEL_PULSE_USER_AGENT",
+    "hf-pulse-dataset/1.0 (+https://github.com/protostatis/pyodide-repl)",
+)
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 MIN_PYTHON_VERSION = (3, 9)
 DEFAULT_PAGE_LIMIT = int(os.environ.get("HF_MODEL_PULSE_PAGE_LIMIT", "100"))
 DEFAULT_MAX_ROWS = int(os.environ.get("HF_MODEL_PULSE_MAX_ROWS", "10000"))
 DEFAULT_TIMEOUT_SECONDS = int(os.environ.get("HF_MODEL_PULSE_TIMEOUT_SECONDS", "300"))
-DEFAULT_SLEEP_SECONDS = float(os.environ.get("HF_MODEL_PULSE_SLEEP_SECONDS", "0.2"))
-REQUEST_TIMEOUT_SECONDS = int(os.environ.get("HF_MODEL_PULSE_REQUEST_TIMEOUT_SECONDS", "90"))
+DEFAULT_SLEEP_SECONDS = float(os.environ.get("HF_MODEL_PULSE_SLEEP_SECONDS", "0.5"))
+REQUEST_TIMEOUT_SECONDS = int(os.environ.get("HF_MODEL_PULSE_REQUEST_TIMEOUT_SECONDS", "30"))
 
 
 FAMILY_PATTERNS = [
@@ -48,22 +52,29 @@ FAMILY_PATTERNS = [
     ("clip", re.compile(r"\bclip\b", re.I)),
 ]
 
-PUBLISHER_PATTERNS = [
-    ("Meta", "META", re.compile(r"\bmeta\b|facebook|(?:^|[/_-])llama(?:[/_.-]|$)", re.I)),
-    ("Alphabet / Google", "GOOG", re.compile(r"google|deepmind|(?:^|[/_-])gemma(?:[/_.-]|$)", re.I)),
-    ("Microsoft", "MSFT", re.compile(r"microsoft|\bmsft\b|(?:^|[/_-])phi(?:[/_.-]|$)", re.I)),
-    ("Amazon", "AMZN", re.compile(r"amazon|\baws\b|(?:^|[/_-])titan(?:[/_.-]|$)", re.I)),
-    ("NVIDIA", "NVDA", re.compile(r"nvidia|nemotron|(?:^|[/_-])nemo(?:[/_.-]|$)", re.I)),
-    ("Oracle", "ORCL", re.compile(r"\boracle\b", re.I)),
-    ("Alibaba / Qwen", "BABA", re.compile(r"alibaba|(?:^|[/_-])qwen(?:[/_.-]|$)|\bdamo\b", re.I)),
-    ("OpenAI", "", re.compile(r"openai|gpt-oss", re.I)),
-    ("Anthropic", "", re.compile(r"anthropic|(?:^|[/_-])claude(?:[/_.-]|$)", re.I)),
-    ("Mistral AI", "", re.compile(r"mistral|mixtral", re.I)),
-    ("Stability AI", "", re.compile(r"stabilityai|stable-diffusion|sdxl", re.I)),
-    ("Hugging Face", "", re.compile(r"huggingface|hf-", re.I)),
-    ("BAAI", "", re.compile(r"\bbaai\b|(?:^|[/_-])bge(?:[/_.-]|$)", re.I)),
-    ("Sentence Transformers", "", re.compile(r"sentence-transformers", re.I)),
-]
+PUBLISHER_ORG_MAP = {
+    "meta-llama": ("Meta", "META"),
+    "facebook": ("Meta", "META"),
+    "google": ("Alphabet / Google", "GOOG"),
+    "google-deepmind": ("Alphabet / Google", "GOOG"),
+    "deepmind": ("Alphabet / Google", "GOOG"),
+    "microsoft": ("Microsoft", "MSFT"),
+    "microsoft-research": ("Microsoft", "MSFT"),
+    "amazon": ("Amazon", "AMZN"),
+    "aws": ("Amazon", "AMZN"),
+    "nvidia": ("NVIDIA", "NVDA"),
+    "oracle": ("Oracle", "ORCL"),
+    "qwen": ("Alibaba / Qwen", "BABA"),
+    "alibaba": ("Alibaba / Qwen", "BABA"),
+    "openai": ("OpenAI", ""),
+    "anthropic": ("Anthropic", ""),
+    "mistralai": ("Mistral AI", ""),
+    "stabilityai": ("Stability AI", ""),
+    "stability-ai": ("Stability AI", ""),
+    "huggingface": ("Hugging Face", ""),
+    "baai": ("BAAI", ""),
+    "sentence-transformers": ("Sentence Transformers", ""),
+}
 
 QUANTIZATION_PATTERN = re.compile(r"gguf|gptq|awq|exl2|bitsandbytes|quant", re.I)
 PARAMETER_HINT_PATTERN = re.compile(r"(?:^|[/_.\-\s])(\d+(?:\.\d+)?)\s*([bm])(?=$|[/_.\-\s])", re.I)
@@ -101,6 +112,13 @@ EMPTY_SPEND_FIELDS = {field: "" for field in SPEND_FIELDS}
 
 ACTIVE_ROWS = []
 ACTIVE_CHECKPOINT_PATH = None
+
+
+class PartialDatasetError(RuntimeError):
+    def __init__(self, reason: str, checkpoint_path: Path):
+        super().__init__(f"{reason}; partial rows saved to {checkpoint_path}")
+        self.reason = reason
+        self.checkpoint_path = checkpoint_path
 
 
 def ensure_python_version():
@@ -159,6 +177,10 @@ def bool_value(value):
     if isinstance(value, str):
         return value.lower() in {"1", "true", "yes"}
     return bool(value)
+
+
+def normalized_org(value: str):
+    return text_value(value).strip().lower()
 
 
 def retry_after_seconds(value: str):
@@ -253,7 +275,10 @@ def request_json(url: str, timeout_seconds: int):
     delay = 2
     last_error = None
     for attempt in range(4):
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        headers = {"User-Agent": USER_AGENT}
+        if HF_TOKEN:
+            headers["Authorization"] = f"Bearer {HF_TOKEN}"
+        req = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
                 body = resp.read().decode("utf-8")
@@ -305,6 +330,7 @@ def annualize(value, period_days: int):
 
 
 def spend_candidate_score(row: dict):
+    """Prefer the latest filing and current-period capex/R&D flow facts."""
     label = row.get("fact_label", "")
     concept = row.get("concept", "")
     period_days = to_int(row.get("period_days"))
@@ -485,10 +511,9 @@ def infer_reddit_theme(topic_bucket: str):
 
 
 def infer_publisher(model_id: str, author: str, tags: list[str]):
-    text = " ".join([model_id, author])
-    for publisher, ticker, pattern in PUBLISHER_PATTERNS:
-        if pattern.search(text):
-            return publisher, ticker
+    namespace = normalized_org(author or model_id.split("/", 1)[0])
+    if namespace in PUBLISHER_ORG_MAP:
+        return PUBLISHER_ORG_MAP[namespace]
     return author or model_id.split("/", 1)[0], ""
 
 
@@ -527,7 +552,7 @@ def build_rows(max_rows: int, page_limit: int, timeout_seconds: float, sleep_sec
             partial_reason = f"overall timeout reached after {timeout_seconds:g}s"
             save_checkpoint(rows, checkpoint_path)
             warn(f"{partial_reason}; saved {len(rows)} partial rows to {checkpoint_path}")
-            return rows, partial_reason
+            raise PartialDatasetError(partial_reason, checkpoint_path)
         try:
             page, link = request_json(url, request_timeout_seconds)
         except Exception as err:
@@ -536,7 +561,7 @@ def build_rows(max_rows: int, page_limit: int, timeout_seconds: float, sleep_sec
             partial_reason = f"persistent Hugging Face API failure: {err}"
             save_checkpoint(rows, checkpoint_path)
             warn(f"stopping after {partial_reason}; saved {len(rows)} partial rows to {checkpoint_path}")
-            return rows, partial_reason
+            raise PartialDatasetError(partial_reason, checkpoint_path)
         if not isinstance(page, list):
             raise ValueError("Hugging Face API returned a non-list models page")
         for model in page:
@@ -591,7 +616,7 @@ def build_rows(max_rows: int, page_limit: int, timeout_seconds: float, sleep_sec
         save_checkpoint(rows, checkpoint_path)
         if url and sleep_seconds:
             time.sleep(sleep_seconds)
-    return rows, ""
+    return rows
 
 
 def main():
@@ -599,7 +624,7 @@ def main():
     args = parse_args()
     install_signal_handlers(args.checkpoint_path)
     try:
-        rows, partial_reason = build_rows(
+        rows = build_rows(
             max_rows=args.max_rows,
             page_limit=args.page_limit,
             timeout_seconds=args.timeout_seconds,
@@ -607,12 +632,12 @@ def main():
             checkpoint_path=args.checkpoint_path,
             request_timeout_seconds=args.request_timeout_seconds,
         )
-        if partial_reason:
-            raise SystemExit(f"{partial_reason}; partial rows saved to {args.checkpoint_path}")
         write_rows(rows, args.output_path)
         if args.checkpoint_path != args.output_path and args.checkpoint_path.exists():
             args.checkpoint_path.unlink()
         print(f"wrote {len(rows)} rows to {args.output_path}")
+    except PartialDatasetError as err:
+        raise SystemExit(str(err)) from err
     except Exception as err:
         if ACTIVE_ROWS:
             save_active_checkpoint(f"unexpected error: {err}")
