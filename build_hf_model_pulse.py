@@ -3,6 +3,9 @@
 
 Requires Python 3.9+. Spend proxy columns are directional SEC R&D and
 capex-flow signals, not AI-only spend figures.
+Default coverage is the top 10,000 Hugging Face models by downloads, not the
+full model universe. Set --max-rows to adjust coverage, and set
+HF_MODEL_PULSE_USER_AGENT/HF_TOKEN for identified or authenticated API use.
 
 Output: public/hf_model_pulse.csv
 """
@@ -22,6 +25,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 
 BASE_URL = "https://huggingface.co/api/models"
@@ -29,7 +33,7 @@ OUT_PATH = Path("public/hf_model_pulse.csv")
 AI_DEMAND_FACTS_PATH = Path("public/ai_demand_facts.csv")
 USER_AGENT = os.environ.get(
     "HF_MODEL_PULSE_USER_AGENT",
-    "hf-pulse-dataset/1.0 (+https://github.com/protostatis/pyodide-repl)",
+    "hf-pulse-dataset/1.0",
 )
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 MIN_PYTHON_VERSION = (3, 9)
@@ -110,7 +114,7 @@ SPEND_FIELDS = [
 
 EMPTY_SPEND_FIELDS = {field: "" for field in SPEND_FIELDS}
 
-ACTIVE_ROWS = []
+ACTIVE_ROWS: list[dict[str, Any]] = []
 ACTIVE_CHECKPOINT_PATH = None
 
 
@@ -233,7 +237,7 @@ def fieldnames():
     ]
 
 
-def write_rows(rows: list[dict], path: Path):
+def write_rows(rows: list[dict[str, Any]], path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     with tmp_path.open("w", newline="", encoding="utf-8") as f:
@@ -243,7 +247,7 @@ def write_rows(rows: list[dict], path: Path):
     tmp_path.replace(path)
 
 
-def save_checkpoint(rows: list[dict], checkpoint_path: Path):
+def save_checkpoint(rows: list[dict[str, Any]], checkpoint_path: Path):
     if rows:
         write_rows(rows, checkpoint_path)
 
@@ -564,6 +568,9 @@ def build_rows(max_rows: int, page_limit: int, timeout_seconds: float, sleep_sec
             raise PartialDatasetError(partial_reason, checkpoint_path)
         if not isinstance(page, list):
             raise ValueError("Hugging Face API returned a non-list models page")
+        if not page:
+            warn("Hugging Face API returned an empty page; stopping pagination")
+            break
         for model in page:
             if not isinstance(model, dict):
                 warn("skipping non-object model entry from Hugging Face API")
@@ -638,6 +645,8 @@ def main():
         print(f"wrote {len(rows)} rows to {args.output_path}")
     except PartialDatasetError as err:
         raise SystemExit(str(err)) from err
+    except SystemExit:
+        raise
     except Exception as err:
         if ACTIVE_ROWS:
             save_active_checkpoint(f"unexpected error: {err}")
