@@ -6,6 +6,9 @@ capex-flow signals, not AI-only spend figures.
 Default coverage is the top 10,000 Hugging Face models by downloads, not the
 full model universe. Set --max-rows to adjust coverage, and set
 HF_MODEL_PULSE_USER_AGENT/HF_TOKEN for identified or authenticated API use.
+Expected runtime is roughly 1-2 minutes at default settings. By default the
+script enriches from public/ai_demand_facts.csv when present; pass
+--skip-spend-enrichment to build the Hugging Face-only rows.
 
 Output: public/hf_model_pulse.csv
 """
@@ -154,6 +157,7 @@ def parse_args():
     parser.add_argument("--timeout-seconds", type=non_negative_float, default=DEFAULT_TIMEOUT_SECONDS, help="Overall scrape timeout; 0 disables it.")
     parser.add_argument("--sleep-seconds", type=non_negative_float, default=DEFAULT_SLEEP_SECONDS, help="Delay between API pages.")
     parser.add_argument("--request-timeout-seconds", type=positive_int, default=REQUEST_TIMEOUT_SECONDS, help="Per-request API timeout.")
+    parser.add_argument("--skip-spend-enrichment", action="store_true", help="Skip optional SEC spend enrichment from public/ai_demand_facts.csv.")
     args = parser.parse_args()
     if args.checkpoint_path is None:
         args.checkpoint_path = args.output_path.with_suffix(args.output_path.suffix + ".checkpoint")
@@ -193,6 +197,11 @@ def retry_after_seconds(value: str):
     except (TypeError, ValueError):
         return None
     return parsed if parsed >= 0 else None
+
+
+def safe_error_message(error: BaseException):
+    message = str(error)
+    return message.replace(HF_TOKEN, "[redacted]") if HF_TOKEN else message
 
 
 def fieldnames():
@@ -536,11 +545,11 @@ def downloads_per_like(downloads, likes):
     return round(float(downloads or 0) / like_count, 2)
 
 
-def build_rows(max_rows: int, page_limit: int, timeout_seconds: float, sleep_seconds: float, checkpoint_path: Path, request_timeout_seconds: int):
+def build_rows(max_rows: int, page_limit: int, timeout_seconds: float, sleep_seconds: float, checkpoint_path: Path, request_timeout_seconds: int, skip_spend_enrichment: bool = False):
     global ACTIVE_ROWS
     rows = []
     ACTIVE_ROWS = rows
-    spend_signals = load_ai_spend_signals()
+    spend_signals = {} if skip_spend_enrichment else load_ai_spend_signals()
     query = urllib.parse.urlencode({
         "sort": "downloads",
         "direction": "-1",
@@ -562,7 +571,7 @@ def build_rows(max_rows: int, page_limit: int, timeout_seconds: float, sleep_sec
         except Exception as err:
             if not rows:
                 raise
-            partial_reason = f"persistent Hugging Face API failure: {err}"
+            partial_reason = f"persistent Hugging Face API failure: {safe_error_message(err)}"
             save_checkpoint(rows, checkpoint_path)
             warn(f"stopping after {partial_reason}; saved {len(rows)} partial rows to {checkpoint_path}")
             raise PartialDatasetError(partial_reason, checkpoint_path)
@@ -638,6 +647,7 @@ def main():
             sleep_seconds=args.sleep_seconds,
             checkpoint_path=args.checkpoint_path,
             request_timeout_seconds=args.request_timeout_seconds,
+            skip_spend_enrichment=args.skip_spend_enrichment,
         )
         write_rows(rows, args.output_path)
         if args.checkpoint_path != args.output_path and args.checkpoint_path.exists():
@@ -648,10 +658,9 @@ def main():
     except SystemExit:
         raise
     except Exception as err:
-        if ACTIVE_ROWS:
-            save_active_checkpoint(f"unexpected error: {err}")
-        else:
-            warn(f"unexpected error before any rows were scraped: {err}")
+        save_active_checkpoint(f"unexpected error: {safe_error_message(err)}")
+        if not ACTIVE_ROWS:
+            warn(f"unexpected error before any rows were scraped: {safe_error_message(err)}")
         raise
 
 
