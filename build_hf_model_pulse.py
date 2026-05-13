@@ -538,20 +538,27 @@ def build_rows(max_rows: int, page_limit: int, timeout_seconds: float, sleep_sec
 def main():
     args = parse_args()
     install_signal_handlers(args.checkpoint_path)
-    rows, partial_reason = build_rows(
-        max_rows=args.max_rows,
-        page_limit=args.page_limit,
-        timeout_seconds=args.timeout_seconds,
-        sleep_seconds=args.sleep_seconds,
-        checkpoint_path=args.checkpoint_path,
-        request_timeout_seconds=args.request_timeout_seconds,
-    )
-    if partial_reason:
-        raise SystemExit(f"{partial_reason}; partial rows saved to {args.checkpoint_path}")
-    write_rows(rows, args.output_path)
-    if args.checkpoint_path != args.output_path and args.checkpoint_path.exists():
-        args.checkpoint_path.unlink()
-    print(f"wrote {len(rows)} rows to {args.output_path}")
+    try:
+        rows, partial_reason = build_rows(
+            max_rows=args.max_rows,
+            page_limit=args.page_limit,
+            timeout_seconds=args.timeout_seconds,
+            sleep_seconds=args.sleep_seconds,
+            checkpoint_path=args.checkpoint_path,
+            request_timeout_seconds=args.request_timeout_seconds,
+        )
+        if partial_reason:
+            raise SystemExit(f"{partial_reason}; partial rows saved to {args.checkpoint_path}")
+        write_rows(rows, args.output_path)
+        if args.checkpoint_path != args.output_path and args.checkpoint_path.exists():
+            args.checkpoint_path.unlink()
+        print(f"wrote {len(rows)} rows to {args.output_path}")
+    except Exception as err:
+        if ACTIVE_ROWS:
+            save_active_checkpoint(f"unexpected error: {err}")
+        else:
+            warn(f"unexpected error before any rows were scraped: {err}")
+        raise
 
 
 if __name__ == "__main__":
