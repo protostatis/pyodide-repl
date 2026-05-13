@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Build a public Hugging Face model pulse dataset.
+"""Fetch a public Hugging Face model pulse dataset.
+
+Requires Python 3.9+. Spend proxy columns are directional SEC R&D and
+capex-flow signals, not AI-only spend figures.
 
 Output: public/hf_model_pulse.csv
 """
@@ -25,6 +28,7 @@ BASE_URL = "https://huggingface.co/api/models"
 OUT_PATH = Path("public/hf_model_pulse.csv")
 AI_DEMAND_FACTS_PATH = Path("public/ai_demand_facts.csv")
 USER_AGENT = "pyodide-repl hf model pulse builder"
+MIN_PYTHON_VERSION = (3, 9)
 DEFAULT_PAGE_LIMIT = int(os.environ.get("HF_MODEL_PULSE_PAGE_LIMIT", "100"))
 DEFAULT_MAX_ROWS = int(os.environ.get("HF_MODEL_PULSE_MAX_ROWS", "10000"))
 DEFAULT_TIMEOUT_SECONDS = int(os.environ.get("HF_MODEL_PULSE_TIMEOUT_SECONDS", "300"))
@@ -62,6 +66,7 @@ PUBLISHER_PATTERNS = [
 ]
 
 QUANTIZATION_PATTERN = re.compile(r"gguf|gptq|awq|exl2|bitsandbytes|quant", re.I)
+PARAMETER_HINT_PATTERN = re.compile(r"(?:^|[/_.\-\s])(\d+(?:\.\d+)?)\s*([bm])(?=$|[/_.\-\s])", re.I)
 
 AI_DEMAND_TICKERS = {"META", "GOOG", "MSFT", "AMZN", "NVDA", "ORCL"}
 
@@ -98,6 +103,12 @@ ACTIVE_ROWS = []
 ACTIVE_CHECKPOINT_PATH = None
 
 
+def ensure_python_version():
+    if sys.version_info < MIN_PYTHON_VERSION:
+        required = ".".join(str(part) for part in MIN_PYTHON_VERSION)
+        raise SystemExit(f"build_hf_model_pulse.py requires Python {required}+")
+
+
 def positive_int(value: str):
     parsed = int(value)
     if parsed <= 0:
@@ -113,7 +124,7 @@ def non_negative_float(value: str):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Build public/hf_model_pulse.csv from the Hugging Face models API.")
+    parser = argparse.ArgumentParser(description="Fetch public/hf_model_pulse.csv from the Hugging Face models API.")
     parser.add_argument("--output-path", type=Path, default=OUT_PATH, help="CSV output path.")
     parser.add_argument("--checkpoint-path", type=Path, default=None, help="Partial CSV checkpoint path.")
     parser.add_argument("--max-rows", type=positive_int, default=DEFAULT_MAX_ROWS, help="Maximum models to write.")
@@ -125,6 +136,37 @@ def parse_args():
     if args.checkpoint_path is None:
         args.checkpoint_path = args.output_path.with_suffix(args.output_path.suffix + ".checkpoint")
     return args
+
+
+def text_value(value):
+    if value is None:
+        return ""
+    if isinstance(value, (str, int, float, bool)):
+        return str(value)
+    try:
+        return json.dumps(value, sort_keys=True)
+    except TypeError:
+        return str(value)
+
+
+def list_value(value):
+    return value if isinstance(value, list) else []
+
+
+def bool_value(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in {"1", "true", "yes"}
+    return bool(value)
+
+
+def retry_after_seconds(value: str):
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
 
 
 def fieldnames():
@@ -216,7 +258,20 @@ def request_json(url: str, timeout_seconds: int):
             with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
                 body = resp.read().decode("utf-8")
                 return json.loads(body), resp.headers.get("Link", "")
-        except (TimeoutError, urllib.error.URLError, urllib.error.HTTPError) as err:
+        except urllib.error.HTTPError as err:
+            if err.code in {401, 403}:
+                raise RuntimeError(f"Hugging Face API returned HTTP {err.code}; request is not authorized") from err
+            last_error = err
+            if attempt == 3:
+                break
+            sleep_for = retry_after_seconds(err.headers.get("Retry-After")) if err.code == 429 else None
+            if sleep_for is None:
+                sleep_for = delay
+            if err.code == 429:
+                warn(f"Hugging Face API rate limited request; sleeping {sleep_for:g}s before retry")
+            time.sleep(sleep_for)
+            delay *= 2
+        except (TimeoutError, urllib.error.URLError) as err:
             last_error = err
             if attempt == 3:
                 break
@@ -375,7 +430,7 @@ def tag_values(tags: list[str], prefix: str, limit: int = 5):
 
 
 def file_flags(siblings: list[dict]):
-    files = [str(item.get("rfilename", "")).lower() for item in siblings]
+    files = [text_value(item.get("rfilename", "")).lower() for item in siblings if isinstance(item, dict)]
     joined = " ".join(files)
     return {
         "file_count": len(files),
@@ -397,11 +452,8 @@ def infer_family(model_id: str, tags: list[str]):
 
 def infer_parameter_hint(model_id: str, tags: list[str]):
     text = " ".join([model_id, *tags])
-    match = re.search(r"(?<!\d)(\d+(?:\.\d+)?)\s*[-_ ]?b(?:\b|[-_])", text, re.I)
-    if match:
-        return f"{match.group(1)}B"
-    match = re.search(r"(?<!\d)(\d+(?:\.\d+)?)\s*[-_ ]?m(?:\b|[-_])", text, re.I)
-    return f"{match.group(1)}M" if match else ""
+    match = PARAMETER_HINT_PATTERN.search(text)
+    return f"{match.group(1)}{match.group(2).upper()}" if match else ""
 
 
 def infer_topic(row: dict, flags: dict):
@@ -451,7 +503,7 @@ def infer_local_friendly(flags: dict, tag_text: str):
 def downloads_per_like(downloads, likes):
     like_count = to_float(likes) or 0
     if like_count <= 0:
-        return ""
+        return 0
     return round(float(downloads or 0) / like_count, 2)
 
 
@@ -485,11 +537,18 @@ def build_rows(max_rows: int, page_limit: int, timeout_seconds: float, sleep_sec
             save_checkpoint(rows, checkpoint_path)
             warn(f"stopping after {partial_reason}; saved {len(rows)} partial rows to {checkpoint_path}")
             return rows, partial_reason
+        if not isinstance(page, list):
+            raise ValueError("Hugging Face API returned a non-list models page")
         for model in page:
-            tags = [str(tag) for tag in model.get("tags") or []]
-            flags = file_flags(model.get("siblings") or [])
-            model_id = model.get("id") or model.get("modelId") or ""
-            author = model.get("author") or model_id.split("/", 1)[0]
+            if not isinstance(model, dict):
+                warn("skipping non-object model entry from Hugging Face API")
+                continue
+            tags = [text_value(tag) for tag in list_value(model.get("tags"))]
+            flags = file_flags(list_value(model.get("siblings")))
+            model_id = text_value(model.get("id") or model.get("modelId"))
+            author = text_value(model.get("author")) or model_id.split("/", 1)[0]
+            downloads = to_int(model.get("downloads"))
+            likes = to_int(model.get("likes"))
             publisher_group, public_company_ticker = infer_publisher(model_id, author, tags)
             row = {
                 "rank_by_downloads": len(rows) + 1,
@@ -499,17 +558,17 @@ def build_rows(max_rows: int, page_limit: int, timeout_seconds: float, sleep_sec
                 "public_company_ticker": public_company_ticker,
                 "ai_demand_issuer_match": public_company_ticker in AI_DEMAND_TICKERS,
                 "synergy_axis": "open_model_adoption",
-                "downloads": model.get("downloads") or 0,
-                "likes": model.get("likes") or 0,
-                "pipeline_tag": model.get("pipeline_tag") or "",
-                "library_name": model.get("library_name") or "",
+                "downloads": downloads,
+                "likes": likes,
+                "pipeline_tag": text_value(model.get("pipeline_tag")),
+                "library_name": text_value(model.get("library_name")),
                 "license": tag_value(tags, "license:"),
                 "model_family": infer_family(model_id, tags),
                 "parameter_hint": infer_parameter_hint(model_id, tags),
-                "created_at": model.get("createdAt") or "",
-                "last_modified": model.get("lastModified") or "",
-                "gated": bool(model.get("gated")),
-                "private": bool(model.get("private")),
+                "created_at": text_value(model.get("createdAt")),
+                "last_modified": text_value(model.get("lastModified")),
+                "gated": bool_value(model.get("gated")),
+                "private": bool_value(model.get("private")),
                 "tag_count": len(tags),
                 "dataset_tags": tag_values(tags, "dataset:"),
                 "base_model_tags": tag_values(tags, "base_model:"),
@@ -536,6 +595,7 @@ def build_rows(max_rows: int, page_limit: int, timeout_seconds: float, sleep_sec
 
 
 def main():
+    ensure_python_version()
     args = parse_args()
     install_signal_handlers(args.checkpoint_path)
     try:
