@@ -588,6 +588,8 @@
       ],
       'Research Data': [
         { title: 'AI Demand Facts', desc: '13k+ SEC filing rows with spend, backlog, cash, and capex signals', code: "df = await load_url('/ai_demand_facts.csv')\nshow_df(df, limit=12)", ask: 'which buyers and suppliers are driving the spend?' },
+        { title: 'AI Models', desc: '3.5k+ models with training compute, parameters, hardware, domains, organizations, and release dates', code: "df = await load_url('/ai_models.csv')\nshow_df(df, limit=12)", ask: 'which organizations are driving training compute and model scale?' },
+        { title: 'Open Model Pulse', desc: 'Top 10k Hugging Face models by downloads with tasks, licenses, formats, quantization, company links, and Reddit-theme buckets', code: "df = await load_url('/hf_model_pulse.csv')\nshow_df(df, limit=12)", ask: 'which open models are actually getting used, and what formats make them local-friendly?' },
       ],
     };
 
@@ -697,22 +699,36 @@
       section.innerHTML = group === 'Research Data' ? `
         <h3>${group}</h3>
         <div class="provenance-panel">
-          <div class="eyebrow">How we gathered AI Demand Facts</div>
+          <div class="eyebrow">Research dataset provenance</div>
           <div class="summary">
-            We pulled inline XBRL instance documents from SEC EDGAR filings, extracted raw facts plus their contexts,
-            kept the source filing URLs and accession IDs for traceability, and added a light normalization layer for
-            spend, backlog, capex, cash, debt, and profitability signals.
+            These datasets connect AI infrastructure demand from two angles: company filing facts for spend and backlog,
+            model-level records for training compute and release timing, plus a live pulse of open model usage on Hugging Face.
           </div>
           <div class="provenance-grid">
             <div class="provenance-card">
-              <div class="label">Source</div>
+              <div class="label">SEC Source</div>
               <div class="value">SEC XBRL instance docs</div>
               <div class="muted">Primary filings, not news summaries</div>
             </div>
             <div class="provenance-card">
-              <div class="label">Coverage</div>
+              <div class="label">SEC Coverage</div>
               <div class="value">13 filings across 9 issuers</div>
               <div class="muted">Meta, Microsoft, Alphabet, Amazon, Oracle, Broadcom, Vertiv, Micron, NVIDIA</div>
+            </div>
+            <div class="provenance-card">
+              <div class="label">Model Dataset</div>
+              <div class="value">3,523 AI models, 57 columns</div>
+              <div class="muted">Training compute, parameters, hardware, domains, organizations, and release dates</div>
+            </div>
+            <div class="provenance-card">
+              <div class="label">Open Model Pulse</div>
+              <div class="value">10,000 HF models, 52 columns</div>
+              <div class="muted">Downloads, formats, company links, SEC spend proxies, Reddit themes, and local-LLM buckets</div>
+            </div>
+            <div class="provenance-card">
+              <div class="label">Attribution</div>
+              <div class="value">SEC, Epoch AI, Hugging Face</div>
+              <div class="muted">Source URLs are retained for each curated research dataset</div>
             </div>
             <div class="provenance-card">
               <div class="label">Extraction</div>

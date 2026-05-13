@@ -260,6 +260,50 @@ test("public insight page infers AI Demand Facts provenance", () => {
   assert.match(html, /MSFT capex up/);
 });
 
+test("public insight page infers AI Models provenance", () => {
+  const html = renderInsightHtml({
+    id: "abcdef123466",
+    slug: "ai-models",
+    title: "AI model scale is concentrated",
+    description: "",
+    takeaway: "The model database shows which organizations are driving training compute and model scale.",
+    visibility: "public",
+    author: {},
+    notebook: { cells: [{ type: "code", code: "df = await load_url('/ai_models.csv')", outputText: "loaded ai_models.csv: 3523 rows x 57 cols" }] },
+  }, "http://localhost:3000/i/abcdef123466-ai-models");
+
+  assert.match(html, /Where the numbers came from/);
+  assert.match(html, /AI Models CSV/);
+  assert.match(html, /Epoch AI all AI models dataset/);
+  assert.match(html, /3,523 models checked/);
+  assert.match(html, /3,523 machine learning models/);
+  assert.match(html, /href="\/ai_models\.csv"/);
+  assert.match(html, /Creative Commons Attribution source CSV/);
+  assert.match(html, /loaded ai_models\.csv/);
+});
+
+test("public insight page infers Open Model Pulse provenance", () => {
+  const html = renderInsightHtml({
+    id: "abcdef123467",
+    slug: "open-model-pulse",
+    title: "Open model usage is concentrated",
+    description: "",
+    takeaway: "Hugging Face downloads show which open models and local-friendly formats are actually being used.",
+    visibility: "public",
+    author: {},
+    notebook: { cells: [{ type: "code", code: "df = await load_url('/hf_model_pulse.csv')", outputText: "loaded hf_model_pulse.csv: 10000 rows x 52 cols" }] },
+  }, "http://localhost:3000/i/abcdef123467-open-model-pulse");
+
+  assert.match(html, /Where the numbers came from/);
+  assert.match(html, /Open Model Pulse CSV/);
+  assert.match(html, /Hugging Face public models API/);
+  assert.match(html, /10,000 models checked/);
+  assert.match(html, /Top 10,000 Hugging Face models/);
+  assert.match(html, /href="\/hf_model_pulse\.csv"/);
+  assert.match(html, /local LLMs, quantization, embeddings/);
+  assert.match(html, /loaded hf_model_pulse\.csv/);
+});
+
 test("public insight page derives source and evidence fallbacks safely", () => {
   const tickerHtml = renderInsightHtml({
     id: "abcdef123456",
