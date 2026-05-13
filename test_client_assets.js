@@ -29,6 +29,10 @@ test("shared routes load client assets from the site root", () => {
   assert.match(index, /getPublishProofHtml/);
   assert.match(index, /outputHtml: getPublishProofHtml\(output\)/);
   assert.match(index, /show_df\(df, limit=12\)/);
+  assert.match(index, /ai_models\.csv/);
+  assert.match(index, /AI Models/);
+  assert.match(index, /hf_model_pulse\.csv/);
+  assert.match(index, /Open Model Pulse/);
   assert.match(index, /\.agent-summary/);
   assert.match(index, /decodeJwtPayloadUnsafe/);
   assert.match(index, /renderPublishMessages/);

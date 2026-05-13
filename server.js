@@ -466,14 +466,54 @@ const AI_DEMAND_SOURCE = {
   updatedAt: "2026-05-10",
 };
 
+const AI_MODELS_SOURCE = {
+  label: "AI Models CSV",
+  source: "Epoch AI all AI models dataset",
+  url: "/ai_models.csv",
+  coverage: "3,523 machine learning models from 1950 to today",
+  rows: "3,523 models checked",
+  columns: "57 fields kept for each model, including domain, task, organization, publication date, parameters, training compute, dataset size, training hardware, and citations",
+  issuers: "OpenAI, Alibaba, Google DeepMind, Google, Meta AI, Microsoft, Anthropic, NVIDIA, and other AI labs and companies",
+  method: "Downloaded the Creative Commons Attribution source CSV from Epoch AI, which tracks notable and large-scale AI models plus model-scale signals such as training compute, parameters, hardware, release timing, and source links.",
+  updatedAt: "2026-05-12",
+};
+
+const HF_MODEL_PULSE_SOURCE = {
+  label: "Open Model Pulse CSV",
+  source: "Hugging Face public models API converted into a model usage pulse",
+  url: "/hf_model_pulse.csv",
+  coverage: "Top 10,000 Hugging Face models ranked by downloads",
+  rows: "10,000 models checked",
+  columns: "52 fields kept for each model, including downloads, likes, task, library, license, family, parameter hint, publisher group, public-company ticker, SEC issuer match, Reddit theme, file formats, quantization/local-LLM signals, SEC spend proxies, PP&E capacity stock, tags, and source URLs",
+  issuers: "Qwen, Google, Meta, sentence-transformers, Microsoft, BAAI, OpenAI, Alibaba, and other Hugging Face publishers",
+  method: "Scraped the public Hugging Face models API sorted by downloads, then normalized tags, publishers, and repository files into research buckets for local LLMs, quantization, embeddings, multimodal models, speech, public-company links, and general model usage.",
+  updatedAt: "2026-05-13",
+};
+
 function isAiDemandSource(source) {
   return source?.url === "/ai_demand_facts.csv" || /ai demand facts/i.test(`${source?.label || ""} ${source?.source || ""}`);
 }
 
+function isAiModelsSource(source) {
+  return source?.url === "/ai_models.csv" || /ai models/i.test(`${source?.label || ""} ${source?.source || ""}`);
+}
+
+function isHfModelPulseSource(source) {
+  return source?.url === "/hf_model_pulse.csv" || /open model pulse|hugging face/i.test(`${source?.label || ""} ${source?.source || ""}`);
+}
+
 function enrichInsightSource(source) {
   if (!source) return null;
-  if (!isAiDemandSource(source)) return source;
-  return { ...AI_DEMAND_SOURCE, ...source, label: source.label || AI_DEMAND_SOURCE.label, url: source.url || AI_DEMAND_SOURCE.url };
+  if (isAiDemandSource(source)) {
+    return { ...AI_DEMAND_SOURCE, ...source, label: source.label || AI_DEMAND_SOURCE.label, url: source.url || AI_DEMAND_SOURCE.url };
+  }
+  if (isAiModelsSource(source)) {
+    return { ...AI_MODELS_SOURCE, ...source, label: source.label || AI_MODELS_SOURCE.label, url: source.url || AI_MODELS_SOURCE.url };
+  }
+  if (isHfModelPulseSource(source)) {
+    return { ...HF_MODEL_PULSE_SOURCE, ...source, label: source.label || HF_MODEL_PULSE_SOURCE.label, url: source.url || HF_MODEL_PULSE_SOURCE.url };
+  }
+  return source;
 }
 
 function normalizeInsightSource(raw) {
@@ -516,6 +556,10 @@ function inferInsightSources(cells) {
     const url = match[1];
     if (url === "/ai_demand_facts.csv") {
       add(AI_DEMAND_SOURCE);
+    } else if (url === "/ai_models.csv") {
+      add(AI_MODELS_SOURCE);
+    } else if (url === "/hf_model_pulse.csv") {
+      add(HF_MODEL_PULSE_SOURCE);
     } else {
       add({ label: url.split("/").filter(Boolean).pop() || url, source: url, url, method: "Loaded by the analysis code." });
     }
@@ -523,7 +567,13 @@ function inferInsightSources(cells) {
 
   for (const match of code.matchAll(/pd\.read_csv\(\s*['"]([^'"]+)['"]\s*\)/g)) {
     const url = match[1];
-    add({ label: url.split("/").filter(Boolean).pop() || url, source: "CSV file", url, method: "Read by the analysis code." });
+    if (url === "/ai_models.csv") {
+      add(AI_MODELS_SOURCE);
+    } else if (url === "/hf_model_pulse.csv") {
+      add(HF_MODEL_PULSE_SOURCE);
+    } else {
+      add({ label: url.split("/").filter(Boolean).pop() || url, source: "CSV file", url, method: "Read by the analysis code." });
+    }
   }
 
   return sources.length ? sources : [{ label: "Published analysis", source: "Code and output attached below", method: "Open the work section to review the exact code and output." }];
