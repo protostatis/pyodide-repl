@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from "no
 import { isIP } from "node:net";
 import { join, extname, resolve, relative, isAbsolute, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import Database from "better-sqlite3";
 import jwt from "jsonwebtoken";
 import { WebSocketServer } from "ws";
@@ -170,6 +170,14 @@ function initInsightsDb(dbPath) {
     );
     CREATE INDEX IF NOT EXISTS idx_insights_user ON insights(user_sub);
     CREATE INDEX IF NOT EXISTS idx_insights_visibility_created ON insights(visibility, created_at);
+    CREATE TABLE IF NOT EXISTS insight_bookmarks (
+      user_sub TEXT NOT NULL CHECK (length(user_sub) <= 256),
+      target_type TEXT NOT NULL CHECK (target_type IN ('insight', 'notebook')),
+      target_key TEXT NOT NULL CHECK (length(target_key) <= 128),
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (user_sub, target_type, target_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_bookmarks_user_created ON insight_bookmarks(user_sub, created_at);
   `);
   return db;
 }
@@ -185,6 +193,18 @@ function generateInsightSlug(title) {
     .replace(/^-+|-+$/g, "")
     .slice(0, 70);
   return slug || "insight";
+}
+
+function publicAuthorSlug(userSub, userName = "") {
+  const hash = createHash("sha256").update(String(userSub || "anonymous")).digest("hex").slice(0, 10);
+  const base = generateInsightSlug(userName || "author").slice(0, 42).replace(/-+$/g, "") || "author";
+  return `${base}-${hash}`;
+}
+
+function parseListLimit(value, fallback = 24, max = 100) {
+  const limit = Number.parseInt(value, 10);
+  if (!Number.isFinite(limit) || limit <= 0) return fallback;
+  return Math.min(limit, max);
 }
 
 function normalizeInsightCells(cells) {
@@ -400,8 +420,199 @@ function rowToInsight(row) {
     notebook: JSON.parse(row.notebook_json || "{}"),
     body: JSON.parse(row.body_json || "{}"),
     viewCount: row.view_count || 0,
+    remixCount: row.remix_count || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function insightPath(insight) {
+  return `/i/${insight.id}-${insight.slug || "insight"}`;
+}
+
+function insightSummaryResponse(insight, options = {}) {
+  const cells = Array.isArray(insight.notebook?.cells) ? insight.notebook.cells : [];
+  const summary = {
+    type: "insight",
+    id: insight.id,
+    slug: insight.slug,
+    url: insightPath(insight),
+    title: insight.title,
+    description: insight.description || "",
+    takeaway: insight.takeaway || "",
+    visibility: insight.visibility,
+    author: {
+      name: insight.author?.name || "Published analysis",
+      picture: insight.author?.picture || "",
+      slug: publicAuthorSlug(insight.author?.sub, insight.author?.name),
+    },
+    sourceLabel: deriveInsightSourceLabel(insight, cells),
+    viewCount: insight.viewCount || 0,
+    remixCount: insight.remixCount || 0,
+    createdAt: insight.createdAt,
+    updatedAt: insight.updatedAt,
+  };
+  if (options.includeOwnerFields) {
+    summary.notebookSlug = normalizeNotebookSlug(insight.notebook?.notebookSlug);
+  }
+  if (options.bookmarkedIds instanceof Set) {
+    summary.bookmarked = options.bookmarkedIds.has(insight.id);
+  }
+  return summary;
+}
+
+function rowToInsightSummary(row, options = {}) {
+  return insightSummaryResponse(rowToInsight(row), options);
+}
+
+function userPublicProfileFromRow(row) {
+  return {
+    name: row.user_name || "Published analysis",
+    picture: row.user_picture || "",
+    slug: publicAuthorSlug(row.user_sub, row.user_name || ""),
+  };
+}
+
+function listPublicInsights(db, options = {}) {
+  const limit = parseListLimit(options.limit, 24, 100);
+  const scanLimit = options.authorSlug ? 500 : Math.min(limit * 3, 150);
+  const rows = db.prepare("SELECT * FROM insights WHERE visibility = 'public' ORDER BY created_at DESC LIMIT ?").all(scanLimit);
+  return rows
+    .map((row) => rowToInsightSummary(row, options))
+    .filter((summary) => !options.excludeId || summary.id !== options.excludeId)
+    .filter((summary) => !options.authorSlug || summary.author.slug === options.authorSlug)
+    .slice(0, limit);
+}
+
+function listCurrentUserInsights(db, user, options = {}) {
+  const limit = parseListLimit(options.limit, 50, 100);
+  const rows = db.prepare("SELECT * FROM insights WHERE user_sub = ? ORDER BY created_at DESC LIMIT ?").all(user.sub, limit);
+  return rows.map((row) => rowToInsightSummary(row, { includeOwnerFields: true }));
+}
+
+function listPublicAuthors(db) {
+  return db.prepare(`
+    SELECT user_sub, user_name, user_picture, MAX(created_at) AS latest_at, COUNT(*) AS insight_count
+    FROM insights
+    WHERE visibility = 'public'
+    GROUP BY user_sub
+    ORDER BY latest_at DESC
+    LIMIT 500
+  `).all().map((row) => ({
+    ...userPublicProfileFromRow(row),
+    insightCount: row.insight_count || 0,
+    latestAt: row.latest_at || 0,
+  }));
+}
+
+function getPublicAuthorProfile(db, authorSlug) {
+  return listPublicAuthors(db).find((author) => author.slug === authorSlug) || null;
+}
+
+function listAuthorPublicInsights(db, authorSlug, options = {}) {
+  const author = getPublicAuthorProfile(db, authorSlug);
+  if (!author) return null;
+  return { author, insights: listPublicInsights(db, { ...options, authorSlug }) };
+}
+
+function listRelatedInsights(db, insight, limit = 4) {
+  const baseCells = Array.isArray(insight.notebook?.cells) ? insight.notebook.cells : [];
+  const sourceLabel = deriveInsightSourceLabel(insight, baseCells);
+  const authorSlug = publicAuthorSlug(insight.author?.sub, insight.author?.name);
+  const rows = db.prepare("SELECT * FROM insights WHERE visibility = 'public' AND id <> ? ORDER BY created_at DESC LIMIT 80").all(insight.id);
+  const summaries = rows.map((row) => rowToInsightSummary(row));
+  const ranked = summaries
+    .map((summary, index) => ({
+      summary,
+      score:
+        (summary.sourceLabel === sourceLabel ? 4 : 0) +
+        (summary.author.slug !== authorSlug ? 2 : 0) +
+        Math.max(0, 1 - index / 100),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .map((item) => item.summary);
+  const otherAuthors = ranked.filter((summary) => summary.author.slug !== authorSlug);
+  return (otherAuthors.length ? otherAuthors : ranked).slice(0, limit);
+}
+
+function normalizeBookmarkInput(input) {
+  const type = String(input?.type || input?.targetType || "").trim().toLowerCase();
+  if (type === "insight") {
+    const key = parseInsightId(input?.id || input?.key || input?.slug || input?.targetKey || "");
+    if (!key) throw makeHttpError(400, "Invalid insight bookmark target");
+    return { type, key };
+  }
+  if (type === "notebook") {
+    const key = normalizeNotebookSlug(input?.slug || input?.key || input?.targetKey || "");
+    if (!key) throw makeHttpError(400, "Invalid notebook bookmark target");
+    return { type, key };
+  }
+  throw makeHttpError(400, "Bookmark type must be insight or notebook");
+}
+
+function notebookBookmarkSummary(slug) {
+  const session = loadNotebookSession(slug);
+  if (!session) return null;
+  const firstCell = Array.isArray(session.cells) ? session.cells.find((cell) => cell?.code) : null;
+  const fallbackTitle = firstCell?.code ? truncateText(compactText(firstCell.code), 90) : `Notebook ${slug}`;
+  return {
+    type: "notebook",
+    slug,
+    url: `/s/${slug}`,
+    title: session.title || fallbackTitle,
+    cellCount: Array.isArray(session.cells) ? session.cells.length : 0,
+    createdAt: session.created ? Date.parse(session.created) || null : null,
+  };
+}
+
+function bookmarkTargetSummary(db, user, type, key) {
+  if (type === "notebook") return notebookBookmarkSummary(key);
+  const insight = loadInsight(db, key);
+  if (!insight) return null;
+  if (insight.visibility !== "public" && insight.author?.sub !== user.sub) return null;
+  return insightSummaryResponse(insight, { includeOwnerFields: insight.author?.sub === user.sub });
+}
+
+function saveUserBookmark(db, user, input) {
+  const { type, key } = normalizeBookmarkInput(input);
+  const target = bookmarkTargetSummary(db, user, type, key);
+  if (!target) throw makeHttpError(404, "Bookmark target not found");
+  const now = Date.now();
+  db.prepare("INSERT OR IGNORE INTO insight_bookmarks (user_sub, target_type, target_key, created_at) VALUES (?, ?, ?, ?)").run(user.sub, type, key, now);
+  return { bookmarked: true, bookmark: { type, key, createdAt: now, target } };
+}
+
+function deleteUserBookmark(db, user, input) {
+  const { type, key } = normalizeBookmarkInput(input);
+  db.prepare("DELETE FROM insight_bookmarks WHERE user_sub = ? AND target_type = ? AND target_key = ?").run(user.sub, type, key);
+  return { bookmarked: false, type, key };
+}
+
+function listUserBookmarks(db, user, options = {}) {
+  const limit = parseListLimit(options.limit, 50, 100);
+  const rows = db.prepare("SELECT target_type, target_key, created_at FROM insight_bookmarks WHERE user_sub = ? ORDER BY created_at DESC LIMIT ?").all(user.sub, limit);
+  return rows.map((row) => {
+    const target = bookmarkTargetSummary(db, user, row.target_type, row.target_key);
+    return target ? {
+      type: row.target_type,
+      key: row.target_key,
+      createdAt: row.created_at,
+      target,
+    } : null;
+  }).filter(Boolean);
+}
+
+function remixInsightResponse(insight) {
+  const cells = Array.isArray(insight.notebook?.cells) ? insight.notebook.cells : [];
+  return {
+    id: insight.id,
+    title: insight.title,
+    url: insightPath(insight),
+    cells: cells.map((cell) => ({
+      type: ["code", "ask"].includes(cell?.type) ? cell.type : "code",
+      code: truncateText(cell?.code, 20000),
+      html: "",
+    })).filter((cell) => cell.code.trim()),
   };
 }
 
@@ -889,7 +1100,19 @@ function renderSourceWork(cells, sources) {
   return `<section class="work-summary"><h3>Reproducibility summary</h3><ul><li>Source used: ${escapeHtml(sourceNames)}</li><li>${codeCount} code cell${codeCount === 1 ? "" : "s"}, ${questionCount} question cell${questionCount === 1 ? "" : "s"}, ${outputCount} output${outputCount === 1 ? "" : "s"} attached.</li><li>Tables and long outputs are summarized first; raw details are available per cell only when useful.</li></ul></section><section class="trace"><h3>Analysis trail</h3>${trace}</section>`;
 }
 
-function renderInsightHtml(insight, canonicalUrl) {
+function renderRelatedInsights(relatedInsights) {
+  const cards = Array.isArray(relatedInsights) ? relatedInsights.slice(0, 4) : [];
+  if (!cards.length) return "";
+  return `<section class="card related-card-wrap"><p class="label">More like this</p><p class="muted">Similar published posts from other users, matched by source and recency.</p><div class="related-grid">${cards.map((item) => `
+    <article class="related-card">
+      <a class="related-title" href="${escapeAttr(item.url)}">${escapeHtml(item.title)}</a>
+      <p>${escapeHtml(item.takeaway || item.description || item.sourceLabel || "Published analysis")}</p>
+      <div class="related-meta"><a href="/u/${escapeAttr(item.author.slug)}">${escapeHtml(item.author.name || "Published analysis")}</a><span>${escapeHtml(item.sourceLabel || "Source attached")}</span></div>
+      <div class="related-actions"><button type="button" data-bookmark-insight="${escapeAttr(item.id)}">Bookmark</button><a href="/?remix=${escapeAttr(item.id)}">Remix</a></div>
+    </article>`).join("")}</div></section>`;
+}
+
+function renderInsightHtml(insight, canonicalUrl, relatedInsights = []) {
   const baseCells = Array.isArray(insight.notebook?.cells) ? insight.notebook.cells : [];
   const notebookSlug = normalizeNotebookSlug(insight.notebook?.notebookSlug);
   const cells = cellsWithNotebookProof(baseCells, notebookSlug);
@@ -916,6 +1139,7 @@ function renderInsightHtml(insight, canonicalUrl) {
   const notebookLink = notebookSlug ? `<a href="/s/${escapeAttr(notebookSlug)}">Open notebook</a>` : "";
   const proofHtml = renderProofPreviews(cells, notebookSlug);
   const sourceWork = renderSourceWork(cells, sources);
+  const relatedHtml = renderRelatedInsights(relatedInsights);
   const published = insight.createdAt ? new Date(insight.createdAt).toISOString().slice(0, 10) : "Published memo";
   const primarySource = sources[0]?.label || sources[0]?.source || "Published analysis";
   const noindex = insight.visibility === "unlisted" || !isShareReady ? '<meta name="robots" content="noindex">' : "";
@@ -950,7 +1174,9 @@ function renderInsightHtml(insight, canonicalUrl) {
   <style>.evidence-card{background:#10140f}.receipt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.receipt{border:1px solid #31382d;background:#080b0a;padding:14px;min-height:150px}.receipt-metric{color:#a6ff73;font:900 clamp(1.8rem,5vw,3.4rem)/.9 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:-.08em}.receipt-label{margin-top:5px;color:#fbfff7;font:800 .9rem/1.22 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.01em}.receipt p{margin:9px 0 0;color:#cbd5c2}.receipt-source{font-size:.78rem;color:#8f9a87}.receipt-source a{color:#a6ff73;overflow-wrap:anywhere}.work-summary{border:1px solid #31382d;background:#0b100c;padding:14px;margin:12px 0}.work-summary h3{margin-top:0}.work-summary ul{margin:0;padding-left:20px;color:#cbd5c2}.trace{margin-top:12px}.cell-label{margin:10px 0 4px;color:#9aa391;font:800 .68rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase}@media (max-width:760px){.receipt-grid{grid-template-columns:1fr}}</style>
   <style>.proof-card{background:#0d120e;border-color:#3a4935}.proof-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:12px}.proof-head .muted{margin:0;color:#9aa391}.proof-link{border:1px solid #a6ff73;color:#a6ff73;text-decoration:none;padding:8px 10px;font:800 .68rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}.proof-link:hover{background:#a6ff73;color:#081008}.proof-grid{display:grid;gap:12px}.proof-item{margin:0;border:1px solid #31382d;background:#080b0a;overflow:auto}.proof-item figcaption{padding:10px 12px;color:#d3a84b;font:800 .68rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid #31382d}.proof-shot img{display:block;width:100%;height:auto}.proof-table{width:100%;border-collapse:collapse;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}.proof-table th,.proof-table td{padding:7px 9px;border-bottom:1px solid #20281f;text-align:left;vertical-align:top}.proof-table th{color:#a6ff73;background:#10170f;font-weight:800}.proof-table td{color:#dbe5d3}.proof-table tr:nth-child(even) td{background:rgba(255,255,255,.025)}@media (max-width:760px){.proof-head{display:grid}.proof-link{justify-self:start}}</style>
   <style>.trace{display:grid;gap:12px}.trace>h3{margin:0;color:#fbf7eb;font-size:1rem}.trace-cell{border:1px solid #31382d;background:#0a0f0b;padding:14px}.trace-head{display:flex;gap:12px;align-items:flex-start}.trace-index{display:inline-grid;place-items:center;min-width:34px;height:34px;border:1px solid #a6ff73;color:#a6ff73;font:800 .72rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}.trace-head h3{margin:0;color:#fbf7eb}.trace-head p{margin:3px 0 0;color:#9aa391;font:700 .72rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.06em}.trace-output{margin:0;color:#dbe5d3;line-height:1.55}.trace-code{max-height:220px}.raw-output{margin-top:10px}.raw-output summary{font-size:.72rem;color:#d3a84b}.raw-output pre{max-height:320px}</style>
+  <style>.bookmark-action,.related-actions button{cursor:pointer;border:1px solid #a6ff73;background:#10170f;color:#a6ff73;padding:10px 12px;font:800 .68rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase}.bookmark-action:hover,.bookmark-action:focus,.related-actions button:hover,.related-actions button:focus{background:#a6ff73;color:#081008;outline:none}.related-card-wrap{background:#0d120e}.related-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.related-card{border:1px solid #31382d;background:#080b0a;padding:14px;display:grid;gap:10px}.related-title{color:#fbf7eb;text-decoration:none;font:800 1rem/1.22 Georgia,'Times New Roman',serif}.related-title:hover{color:#a6ff73}.related-card p{margin:0;color:#cbd5c2}.related-meta{display:grid;gap:4px;color:#8f9a87;font:700 .68rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.06em}.related-meta a{color:#d3a84b;text-decoration:none}.related-actions{display:flex;gap:8px;flex-wrap:wrap}.related-actions a{border:1px solid #3d4938;color:#edf2e8;text-decoration:none;padding:9px 11px;font:800 .68rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase}@media (max-width:760px){.related-grid{grid-template-columns:1fr}}</style>
   <script>document.addEventListener('DOMContentLoaded',()=>{const cards=[...document.querySelectorAll('[data-datum-card]')];if(cards.length<2)return;const pips=[...document.querySelectorAll('[data-datum-jump]')];let i=0;const show=n=>{i=(n+cards.length)%cards.length;cards.forEach((card,idx)=>{card.hidden=idx!==i;card.classList.toggle('active',idx===i)});pips.forEach((pip,idx)=>idx===i?pip.setAttribute('aria-current','true'):pip.removeAttribute('aria-current'))};document.querySelector('[data-datum-prev]')?.addEventListener('click',()=>show(i-1));document.querySelector('[data-datum-next]')?.addEventListener('click',()=>show(i+1));pips.forEach((pip,idx)=>pip.addEventListener('click',()=>show(idx)));if(!matchMedia('(prefers-reduced-motion: reduce)').matches)setInterval(()=>show(i+1),4200);});</script>
+  <script>document.addEventListener('DOMContentLoaded',()=>{const buttons=[...document.querySelectorAll('[data-bookmark-insight]')];if(!buttons.length)return;const startSignIn=()=>{const intent='bookmark';sessionStorage.setItem('authIntent',intent);sessionStorage.setItem('authReturnTo',location.pathname+location.search+location.hash||'/');if(['localhost','127.0.0.1','0.0.0.0','[::1]'].includes(location.hostname)){location.href='/auth/dev-token?intent='+encodeURIComponent(intent);return}const state=crypto.getRandomValues(new Uint32Array(4)).join('-');sessionStorage.setItem('authState',state);const loginUrl=new URL('/auth/login','https://unchainedsky.com');loginUrl.searchParams.set('redirect_uri',location.origin+'/auth/callback');loginUrl.searchParams.set('scope','share');loginUrl.searchParams.set('state',state);loginUrl.searchParams.set('intent',intent);location.href=loginUrl.toString()};const save=async(button)=>{const token=localStorage.getItem('authToken')||'';if(!token){startSignIn();return}button.disabled=true;const original=button.textContent;button.textContent='Saving...';try{const resp=await fetch('/api/me/bookmarks',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({type:'insight',id:button.dataset.bookmarkInsight})});if(resp.status===401){localStorage.removeItem('authToken');startSignIn();return}if(!resp.ok)throw new Error('Bookmark failed');button.textContent='Bookmarked';button.dataset.saved='true'}catch{button.textContent='Try again';setTimeout(()=>{button.textContent=original;button.disabled=false},1400);return}button.disabled=false};buttons.forEach(button=>button.addEventListener('click',()=>save(button)));});</script>
 </head>
 <body><main class="wrap">
   <header class="masthead"><span>pyreplab insight</span><span>Numbers first. Work attached.</span></header>
@@ -963,9 +1189,10 @@ function renderInsightHtml(insight, canonicalUrl) {
       ${evidenceBlockHtml}
       ${proofHtml}
       <section class="card sources"><p class="label">Where the numbers came from</p><div class="source-list">${sources.map(renderInsightSource).join("")}</div></section>
+      ${relatedHtml}
       <section class="card method"><p class="label">Check the work</p><p class="muted">The code and plain-text outputs are kept below so the result can be verified.</p></section>
     </div>
-    <aside class="rail" aria-label="Share and analysis actions"><section class="card"><p class="label">Share this insight</p>${shareHtml}</section><section class="card"><p class="label">Continue analysis</p><div class="buttons">${notebookLink}<a href="${escapeAttr(followUpHref)}">Ask follow-up</a><a class="secondary" href="/#upload">Analyze your own CSV</a><a class="secondary" href="/?ticker=">Run another ticker</a><a class="secondary" href="${escapeAttr(remixHref)}">Remix</a></div></section></aside>
+    <aside class="rail" aria-label="Share and analysis actions"><section class="card"><p class="label">Share this insight</p>${shareHtml}</section><section class="card"><p class="label">Save and interact</p><div class="buttons"><button type="button" class="bookmark-action" data-bookmark-insight="${escapeAttr(insight.id)}">Bookmark insight</button>${notebookLink}<a href="${escapeAttr(followUpHref)}">Ask follow-up</a><a class="secondary" href="/#upload">Analyze your own CSV</a><a class="secondary" href="/?ticker=">Run another ticker</a><a class="secondary" href="${escapeAttr(remixHref)}">Remix</a></div></section></aside>
   </section>
   <details class="work"><summary>Show reproducibility notes</summary>${sourceWork}</details>
 </main></body></html>`;
@@ -1286,6 +1513,68 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (requestUrl.pathname === "/api/recent-insights" && req.method === "GET") {
+    sendJson(res, 200, { insights: listPublicInsights(insightsDb, { limit: requestUrl.searchParams.get("limit") }) });
+    return;
+  }
+
+  const authorInsightsMatch = requestUrl.pathname.match(/^\/api\/users\/([^/]+)\/insights$/);
+  if (authorInsightsMatch && req.method === "GET") {
+    const result = listAuthorPublicInsights(insightsDb, authorInsightsMatch[1], { limit: requestUrl.searchParams.get("limit") });
+    if (!result) {
+      sendJson(res, 404, { error: "Not found" });
+      return;
+    }
+    sendJson(res, 200, result);
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/me/insights" && req.method === "GET") {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    sendJson(res, 200, {
+      user: {
+        name: user.name,
+        email: user.email,
+        picture: user.picture,
+        slug: publicAuthorSlug(user.sub, user.name),
+      },
+      insights: listCurrentUserInsights(insightsDb, user, { limit: requestUrl.searchParams.get("limit") }),
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/me/bookmarks" && req.method === "GET") {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    sendJson(res, 200, { bookmarks: listUserBookmarks(insightsDb, user, { limit: requestUrl.searchParams.get("limit") }) });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/me/bookmarks" && req.method === "POST") {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    try {
+      const payload = await readJsonBody(req, MAX_JSON_BODY_BYTES);
+      sendJson(res, 200, saveUserBookmark(insightsDb, user, payload));
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || "Unable to save bookmark" });
+    }
+    return;
+  }
+
+  const bookmarkDeleteMatch = requestUrl.pathname.match(/^\/api\/me\/bookmarks\/(insight|notebook)\/([a-f0-9-]+)$/);
+  if (bookmarkDeleteMatch && req.method === "DELETE") {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    try {
+      sendJson(res, 200, deleteUserBookmark(insightsDb, user, { type: bookmarkDeleteMatch[1], key: bookmarkDeleteMatch[2] }));
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || "Unable to remove bookmark" });
+    }
+    return;
+  }
+
   if (requestUrl.pathname === "/api/insights" && req.method === "POST") {
     const user = requireAuth(req, res);
     if (!user) return;
@@ -1296,6 +1585,21 @@ const server = createServer(async (req, res) => {
     } catch (err) {
       sendJson(res, err.statusCode || 500, { error: err.message || "Unable to create insight" });
     }
+    return;
+  }
+
+  const remixMatch = requestUrl.pathname.match(/^\/api\/insights\/([^/]+)\/remix$/);
+  if (remixMatch && req.method === "POST") {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    const id = parseInsightId(remixMatch[1]);
+    const insight = id ? loadInsight(insightsDb, id) : null;
+    if (!insight || (insight.visibility !== "public" && insight.author?.sub !== user.sub)) {
+      sendJson(res, 404, { error: "Not found" });
+      return;
+    }
+    insightsDb.prepare("UPDATE insights SET remix_count = remix_count + 1 WHERE id = ?").run(insight.id);
+    sendJson(res, 200, remixInsightResponse(insight));
     return;
   }
 
@@ -1335,7 +1639,7 @@ const server = createServer(async (req, res) => {
     insightsDb.prepare("UPDATE insights SET view_count = view_count + 1 WHERE id = ?").run(insight.id);
     const canonicalUrl = `${getRequestOrigin(req, requestUrl.protocol)}${canonicalPath}`;
     res.writeHead(200, { "Content-Type": "text/html" });
-    res.end(renderInsightHtml(insight, canonicalUrl));
+    res.end(renderInsightHtml(insight, canonicalUrl, listRelatedInsights(insightsDb, insight, 4)));
     return;
   }
 
@@ -1384,6 +1688,13 @@ const server = createServer(async (req, res) => {
 
   // Serve index.html for /s/:slug routes (client-side routing)
   if (req.url.startsWith("/s/")) {
+    const filePath = join(PUBLIC, "index.html");
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(readFileSync(filePath));
+    return;
+  }
+
+  if (["/me", "/insights"].includes(requestUrl.pathname) || /^\/u\/[a-z0-9-]+$/.test(requestUrl.pathname)) {
     const filePath = join(PUBLIC, "index.html");
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end(readFileSync(filePath));
@@ -1920,19 +2231,30 @@ if (process.env.NODE_ENV !== "test") {
 
 export {
   assertSafeProxyUrl,
+  deleteUserBookmark,
   fetchProxyUrl,
   generateInsightSlug,
   getInsightQualityIssues,
   getRequestOrigin,
+  initInsightsDb,
+  insertInsight,
+  insightSummaryResponse,
   isBlockedAddress,
+  listAuthorPublicInsights,
+  listCurrentUserInsights,
+  listPublicInsights,
+  listRelatedInsights,
+  listUserBookmarks,
   parseInsightId,
   publicInsightResponse,
+  publicAuthorSlug,
   requireAuth,
   renderAuthCallbackPage,
   renderInsightHtml,
   renderInsightSvg,
   resolvePublicFilePath,
   rowToInsight,
+  saveUserBookmark,
   sourceHrefAttrs,
   validateInsightPayload,
 };

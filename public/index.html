@@ -111,6 +111,64 @@
     }
     #landing .subtitle { color: #6e7681; font-size: 14px; margin-bottom: 32px; }
 
+    .library-view {
+      max-width: 1040px; margin: 0 auto; padding: 38px 20px 120px;
+      animation: cellEnter 0.35s ease-out;
+    }
+    .library-hero {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: end;
+      margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid #21262d;
+    }
+    .library-eyebrow {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+      color: #58a6ff; margin-bottom: 8px;
+    }
+    .library-hero h2 {
+      color: #f0f6fc; font-size: clamp(24px, 4vw, 34px); line-height: 1.08; margin-bottom: 8px;
+    }
+    .library-hero p { color: #8b949e; font-size: 14px; line-height: 1.55; max-width: 700px; }
+    .library-cta, .library-card-actions a, .library-card-actions button {
+      border: 1px solid #30363d; border-radius: 999px; background: #161b22; color: #c9d1d9;
+      padding: 8px 13px; text-decoration: none; font-size: 12px; font-weight: 700; cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.1s;
+    }
+    .library-cta:hover, .library-card-actions a:hover, .library-card-actions button:hover {
+      border-color: #58a6ff; color: #58a6ff; background: rgba(88, 166, 255, 0.08);
+    }
+    .library-section { margin-top: 26px; }
+    .library-section h3 {
+      color: #8b949e; font-size: 11px; font-weight: 700; letter-spacing: 0.09em;
+      text-transform: uppercase; margin-bottom: 11px;
+    }
+    .library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+    .library-card {
+      border: 1px solid #21262d; border-radius: 14px; background: #161822; padding: 15px;
+      display: grid; gap: 10px; min-height: 190px; position: relative; overflow: hidden;
+    }
+    .library-card::before {
+      content: ''; position: absolute; inset: 0; pointer-events: none;
+      background: radial-gradient(circle at top right, rgba(88, 166, 255, 0.10), transparent 45%);
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .library-card:hover { border-color: #30363d; }
+    .library-card:hover::before { opacity: 1; }
+    .library-card-title { color: #e6edf3; font-size: 16px; line-height: 1.25; font-weight: 700; text-decoration: none; position: relative; z-index: 1; }
+    .library-card-title:hover { color: #58a6ff; }
+    .library-card p { color: #8b949e; font-size: 13px; line-height: 1.45; position: relative; z-index: 1; }
+    .library-meta { display: flex; gap: 7px; flex-wrap: wrap; color: #6e7681; font-size: 11px; position: relative; z-index: 1; }
+    .library-meta a { color: #d2a8ff; text-decoration: none; }
+    .library-pill { border: 1px solid #30363d; border-radius: 999px; padding: 3px 8px; background: #0d1117; }
+    .library-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; position: relative; z-index: 1; }
+    .library-empty, .library-error {
+      border: 1px dashed #30363d; border-radius: 14px; padding: 24px; color: #8b949e;
+      background: rgba(22, 24, 34, 0.65); line-height: 1.55;
+    }
+    .library-error { border-color: rgba(248,81,73,.38); color: #ffd8d5; background: rgba(248,81,73,.08); }
+    @media (max-width: 720px) {
+      .library-hero { grid-template-columns: 1fr; }
+      .library-grid { grid-template-columns: 1fr; }
+    }
+
     .provenance-panel {
       margin-bottom: 28px;
       padding: 18px 18px 16px;
@@ -476,10 +534,12 @@
       <span id="status" class="loading">loading...</span>
     </div>
     <div class="header-actions">
+      <button id="explore-btn" title="Browse public insights">Explore</button>
+      <button id="library-btn" title="View my insights and bookmarks">My library</button>
       <button id="new-btn" title="New notebook">New</button>
       <button id="save-btn" title="Publish a shareable insight" class="hidden">Publish insight</button>
       <button id="share-notebook-btn" title="Copy an editable notebook link" class="hidden">Copy notebook link</button>
-      <button id="add-top-btn" title="Add cell">+ Cell</button>
+      <button id="bookmark-notebook-btn" title="Bookmark this notebook" class="hidden">Bookmark notebook</button>
       <span id="auth-user" class="auth-user hidden"></span>
       <button id="auth-btn" title="Sign in">Sign in</button>
     </div>
@@ -492,6 +552,8 @@
     <div class="data-grid" id="data-grid"></div>
     <input type="file" id="file-input" accept=".csv,.json,.jsonl,.tsv,.xlsx,.xls" style="display:none">
   </div>
+
+  <div id="library-view" class="library-view hidden"></div>
 
   <!-- Drag-drop overlay -->
   <div id="drop-overlay">
@@ -596,12 +658,16 @@
     // --- State ---
     const notebook = document.getElementById('notebook');
     const landing = document.getElementById('landing');
+    const libraryView = document.getElementById('library-view');
     const statusEl = document.getElementById('status');
     const dataGrid = document.getElementById('data-grid');
     const fileInput = document.getElementById('file-input');
     const dropOverlay = document.getElementById('drop-overlay');
+    const exploreBtn = document.getElementById('explore-btn');
+    const libraryBtn = document.getElementById('library-btn');
     const saveBtn = document.getElementById('save-btn');
     const shareNotebookBtn = document.getElementById('share-notebook-btn');
+    const bookmarkNotebookBtn = document.getElementById('bookmark-notebook-btn');
     const authUserEl = document.getElementById('auth-user');
     const authBtn = document.getElementById('auth-btn');
     const publishDialog = document.getElementById('publish-dialog');
@@ -616,6 +682,8 @@
     let ready = false;
     let cellCounter = 0;
     let runningCell = null;
+    let currentNotebookSlug = '';
+    let loadingNotebookSlug = '';
 
     // Display only. The server verifies JWT signatures on every authenticated request.
     function decodeJwtPayloadUnsafe(token) {
@@ -667,11 +735,324 @@
       if (localStorage.getItem('authToken')) {
         localStorage.removeItem('authToken');
         renderAuthUi();
+        if (location.pathname === '/me') renderAppRoute();
       } else {
         window.__startSignIn('signin');
       }
     });
     renderAuthUi();
+
+    function escapeClientHtml(value) {
+      return String(value ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    }
+
+    function escapeClientAttr(value) {
+      return escapeClientHtml(value).replace(/'/g, '&#39;');
+    }
+
+    function formatClientDate(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+    }
+
+    function authHeader() {
+      const token = localStorage.getItem('authToken') || '';
+      return token ? { 'Authorization': `Bearer ${token}` } : {};
+    }
+
+    async function fetchJson(url, options = {}) {
+      const resp = await fetch(url, options);
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const err = new Error(data.error || 'Request failed');
+        err.status = resp.status;
+        throw err;
+      }
+      return data;
+    }
+
+    function showLibraryView(title, subtitle, eyebrow = 'Insights', ctaHtml = '') {
+      landing.classList.add('hidden');
+      notebook.classList.add('hidden');
+      saveBtn.classList.add('hidden');
+      shareNotebookBtn.classList.add('hidden');
+      bookmarkNotebookBtn.classList.add('hidden');
+      libraryView.classList.remove('hidden');
+      libraryView.innerHTML = `
+        <section class="library-hero">
+          <div>
+            <div class="library-eyebrow">${escapeClientHtml(eyebrow)}</div>
+            <h2>${escapeClientHtml(title)}</h2>
+            <p>${escapeClientHtml(subtitle)}</p>
+          </div>
+          <div>${ctaHtml}</div>
+        </section>
+        <div class="library-section"><div class="library-empty">Loading...</div></div>
+      `;
+      document.title = title;
+    }
+
+    function renderInsightCards(insights, options = {}) {
+      if (!insights || !insights.length) {
+        return '<div class="library-empty">No insights yet. Publish an analysis or browse public posts to build this list.</div>';
+      }
+      return `<div class="library-grid">${insights.map(item => {
+        const date = formatClientDate(item.createdAt);
+        const ownerNotebook = options.owner && item.notebookSlug ? `<a href="/s/${escapeClientAttr(item.notebookSlug)}">Notebook ${escapeClientHtml(item.notebookSlug)}</a>` : '';
+        const bookmarkButton = options.owner ? '' : `<button type="button" data-bookmark-insight="${escapeClientAttr(item.id)}">${item.bookmarked ? 'Bookmarked' : 'Bookmark'}</button>`;
+        const authorLink = item.author?.slug ? `<a href="/u/${escapeClientAttr(item.author.slug)}">${escapeClientHtml(item.author.name || 'Published analysis')}</a>` : escapeClientHtml(item.author?.name || 'Published analysis');
+        return `
+          <article class="library-card">
+            <a class="library-card-title" href="${escapeClientAttr(item.url)}">${escapeClientHtml(item.title || 'Untitled insight')}</a>
+            <p>${escapeClientHtml(item.takeaway || item.description || item.sourceLabel || 'Published analysis')}</p>
+            <div class="library-meta">
+              <span class="library-pill">${escapeClientHtml(item.visibility || 'public')}</span>
+              ${date ? `<span class="library-pill">${escapeClientHtml(date)}</span>` : ''}
+              <span class="library-pill">${escapeClientHtml(item.sourceLabel || 'Source attached')}</span>
+              <span>${authorLink}</span>
+            </div>
+            <div class="library-card-actions">
+              <a href="${escapeClientAttr(item.url)}">Open</a>
+              <a href="/?remix=${escapeClientAttr(item.id)}">Remix</a>
+              ${bookmarkButton}
+              ${ownerNotebook}
+            </div>
+          </article>`;
+      }).join('')}</div>`;
+    }
+
+    function renderBookmarkCards(bookmarks) {
+      if (!bookmarks || !bookmarks.length) {
+        return '<div class="library-empty">No bookmarks yet. Save public insights or editable notebook slugs to revisit them here.</div>';
+      }
+      return `<div class="library-grid">${bookmarks.map(bookmark => {
+        const target = bookmark.target || {};
+        if (bookmark.type === 'notebook') {
+          return `
+            <article class="library-card">
+              <a class="library-card-title" href="${escapeClientAttr(target.url || `/s/${bookmark.key}`)}">${escapeClientHtml(target.title || `Notebook ${bookmark.key}`)}</a>
+              <p>Editable notebook slug with ${escapeClientHtml(target.cellCount || 0)} saved cells.</p>
+              <div class="library-meta"><span class="library-pill">notebook</span><span class="library-pill">/s/${escapeClientHtml(bookmark.key)}</span></div>
+              <div class="library-card-actions"><a href="${escapeClientAttr(target.url || `/s/${bookmark.key}`)}">Open notebook</a><button type="button" data-remove-bookmark-type="notebook" data-remove-bookmark-key="${escapeClientAttr(bookmark.key)}">Remove</button></div>
+            </article>`;
+        }
+        return `
+          <article class="library-card">
+            <a class="library-card-title" href="${escapeClientAttr(target.url || '#')}">${escapeClientHtml(target.title || 'Bookmarked insight')}</a>
+            <p>${escapeClientHtml(target.takeaway || target.description || target.sourceLabel || 'Published analysis')}</p>
+            <div class="library-meta"><span class="library-pill">insight</span><span class="library-pill">${escapeClientHtml(target.sourceLabel || 'Source attached')}</span></div>
+            <div class="library-card-actions"><a href="${escapeClientAttr(target.url || '#')}">Open</a><a href="/?remix=${escapeClientAttr(target.id || bookmark.key)}">Remix</a><button type="button" data-remove-bookmark-type="insight" data-remove-bookmark-key="${escapeClientAttr(bookmark.key)}">Remove</button></div>
+          </article>`;
+      }).join('')}</div>`;
+    }
+
+    async function saveBookmark(type, key, button) {
+      const token = localStorage.getItem('authToken') || '';
+      if (!token) {
+        sessionStorage.setItem('pendingBookmark', JSON.stringify({ type, key }));
+        window.__startSignIn('bookmark');
+        return;
+      }
+      const original = button ? button.textContent : '';
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Saving...';
+      }
+      try {
+        await fetchJson('/api/me/bookmarks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeader() },
+          body: JSON.stringify(type === 'insight' ? { type, id: key } : { type, slug: key }),
+        });
+        if (button) button.textContent = 'Bookmarked';
+      } catch (err) {
+        if (err.status === 401) {
+          localStorage.removeItem('authToken');
+          renderAuthUi();
+          sessionStorage.setItem('pendingBookmark', JSON.stringify({ type, key }));
+          window.__startSignIn('bookmark');
+          return;
+        }
+        if (button) {
+          button.textContent = 'Try again';
+          setTimeout(() => { button.textContent = original; button.disabled = false; }, 1400);
+        }
+        return;
+      }
+      if (button) button.disabled = false;
+    }
+
+    async function removeBookmark(type, key, button) {
+      const original = button ? button.textContent : '';
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Removing...';
+      }
+      try {
+        await fetchJson(`/api/me/bookmarks/${encodeURIComponent(type)}/${encodeURIComponent(key)}`, { method: 'DELETE', headers: authHeader() });
+        renderAppRoute();
+      } catch (err) {
+        if (button) {
+          button.textContent = err.status === 401 ? 'Sign in again' : 'Try again';
+          setTimeout(() => { button.textContent = original; button.disabled = false; }, 1400);
+        }
+      }
+    }
+
+    function attachLibraryActions(root) {
+      root.querySelectorAll('[data-bookmark-insight]').forEach(button => {
+        button.addEventListener('click', () => saveBookmark('insight', button.dataset.bookmarkInsight, button));
+      });
+      root.querySelectorAll('[data-remove-bookmark-type]').forEach(button => {
+        button.addEventListener('click', () => removeBookmark(button.dataset.removeBookmarkType, button.dataset.removeBookmarkKey, button));
+      });
+      root.querySelectorAll('[data-signin]').forEach(button => {
+        button.addEventListener('click', () => window.__startSignIn('signin'));
+      });
+    }
+
+    async function renderExploreView() {
+      showLibraryView('Explore published insights', 'Browse public posts, bookmark useful work, or remix another user\'s analysis into your own notebook.', 'Public gallery', '<a class="library-cta" href="/">Start new analysis</a>');
+      try {
+        const data = await fetchJson('/api/recent-insights?limit=36');
+        libraryView.innerHTML = `
+          <section class="library-hero"><div><div class="library-eyebrow">Public gallery</div><h2>Explore published insights</h2><p>Browse public posts, bookmark useful work, or remix another user's analysis into your own notebook.</p></div><a class="library-cta" href="/">Start new analysis</a></section>
+          <section class="library-section"><h3>Recent public posts</h3>${renderInsightCards(data.insights || [])}</section>
+        `;
+        attachLibraryActions(libraryView);
+      } catch (err) {
+        libraryView.innerHTML += `<div class="library-error">${escapeClientHtml(err.message || 'Unable to load insights.')}</div>`;
+      }
+    }
+
+    async function renderMyLibraryView() {
+      if (!localStorage.getItem('authToken')) {
+        showLibraryView('Sign in to see your library', 'Your library keeps the insights you published and the notebook or insight slugs you bookmarked.', 'My library', '<button class="library-cta" data-signin>Sign in</button>');
+        attachLibraryActions(libraryView);
+        return;
+      }
+      showLibraryView('My insights and bookmarks', 'Review your published insight slugs, reopen attached notebooks, and revisit bookmarked work from other users.', 'Signed-in library', '<a class="library-cta" href="/insights">Explore posts</a>');
+      try {
+        const [mine, saved] = await Promise.all([
+          fetchJson('/api/me/insights?limit=80', { headers: authHeader() }),
+          fetchJson('/api/me/bookmarks?limit=80', { headers: authHeader() }),
+        ]);
+        libraryView.innerHTML = `
+          <section class="library-hero"><div><div class="library-eyebrow">Signed-in library</div><h2>My insights and bookmarks</h2><p>Review your published insight slugs, reopen attached notebooks, and revisit bookmarked work from other users.</p></div><a class="library-cta" href="/insights">Explore posts</a></section>
+          <section class="library-section"><h3>Published by me</h3>${renderInsightCards(mine.insights || [], { owner: true })}</section>
+          <section class="library-section"><h3>Bookmarked slugs</h3>${renderBookmarkCards(saved.bookmarks || [])}</section>
+        `;
+        attachLibraryActions(libraryView);
+      } catch (err) {
+        if (err.status === 401) {
+          localStorage.removeItem('authToken');
+          renderAuthUi();
+          renderMyLibraryView();
+          return;
+        }
+        libraryView.innerHTML += `<div class="library-error">${escapeClientHtml(err.message || 'Unable to load your library.')}</div>`;
+      }
+    }
+
+    async function renderAuthorView(authorSlug) {
+      showLibraryView('Author insights', 'Public posts from this author.', 'Author profile', '<a class="library-cta" href="/insights">Explore all</a>');
+      try {
+        const data = await fetchJson(`/api/users/${encodeURIComponent(authorSlug)}/insights?limit=60`);
+        libraryView.innerHTML = `
+          <section class="library-hero"><div><div class="library-eyebrow">Author profile</div><h2>${escapeClientHtml(data.author?.name || 'Published analysis')}</h2><p>${escapeClientHtml(data.author?.insightCount || 0)} public insight${data.author?.insightCount === 1 ? '' : 's'} published by this user.</p></div><a class="library-cta" href="/insights">Explore all</a></section>
+          <section class="library-section"><h3>Published insights</h3>${renderInsightCards(data.insights || [])}</section>
+        `;
+        attachLibraryActions(libraryView);
+      } catch (err) {
+        libraryView.innerHTML = `<div class="library-error">${escapeClientHtml(err.message || 'Author not found.')}</div>`;
+      }
+    }
+
+    function renderAppRoute() {
+      const path = location.pathname;
+      if (path === '/' && !new URLSearchParams(location.search).has('remix')) {
+        libraryView.classList.add('hidden');
+        if (notebook.classList.contains('hidden')) landing.classList.remove('hidden');
+        document.title = notebook.classList.contains('hidden') ? 'pyreplab notebook' : document.title;
+        return false;
+      }
+      const slugMatch = path.match(/^\/s\/([a-f0-9]+)$/);
+      if (slugMatch) {
+        openNotebookSlugRoute(slugMatch[1]);
+        return true;
+      }
+      if (path === '/insights') {
+        renderExploreView();
+        return true;
+      }
+      if (path === '/me') {
+        renderMyLibraryView();
+        return true;
+      }
+      const authorMatch = path.match(/^\/u\/([a-z0-9-]+)$/);
+      if (authorMatch) {
+        renderAuthorView(authorMatch[1]);
+        return true;
+      }
+      return false;
+    }
+
+    exploreBtn.addEventListener('click', () => {
+      history.pushState(null, '', '/insights');
+      renderAppRoute();
+    });
+
+    libraryBtn.addEventListener('click', () => {
+      history.pushState(null, '', '/me');
+      renderAppRoute();
+    });
+
+    window.addEventListener('popstate', renderAppRoute);
+
+    async function remixInsight(id) {
+      const token = localStorage.getItem('authToken') || '';
+      if (!token) {
+        sessionStorage.setItem('pendingRemix', id);
+        window.__startSignIn('remix');
+        return;
+      }
+      try {
+        const data = await fetchJson(`/api/insights/${encodeURIComponent(id)}/remix`, {
+          method: 'POST',
+          headers: authHeader(),
+        });
+        history.replaceState(null, '', '/');
+        loadFromSlug({ title: data.title || '', cells: data.cells || [] });
+      } catch (err) {
+        if (err.status === 401) {
+          localStorage.removeItem('authToken');
+          renderAuthUi();
+          sessionStorage.setItem('pendingRemix', id);
+          window.__startSignIn('remix');
+          return;
+        }
+        showLibraryView('Could not remix insight', err.message || 'The post may no longer be available.', 'Remix');
+      }
+    }
+
+    async function openNotebookSlugRoute(slug) {
+      if (!slug || loadingNotebookSlug === slug || currentNotebookSlug === slug) return;
+      loadingNotebookSlug = slug;
+      try {
+        const resp = await fetch(`/api/load/${slug}`);
+        if (!resp.ok) return;
+        const session = await resp.json();
+        loadFromSlug(session);
+        if (!ready) {
+          statusEl.textContent = 'loading...';
+          statusEl.className = 'loading';
+        }
+      } catch {
+      } finally {
+        loadingNotebookSlug = '';
+      }
+    }
 
     // --- Render Your Data section first (upload tile) ---
     (function renderUploadSection() {
@@ -848,7 +1229,10 @@
 
     function startNotebook(loadCode, firstQuestion, autoRun) {
       landing.classList.add('hidden');
+      libraryView.classList.add('hidden');
       notebook.classList.remove('hidden');
+      currentNotebookSlug = '';
+      bookmarkNotebookBtn.classList.add('hidden');
       showPublishButton();
       notebook.innerHTML = '';
       window._lastContext = '{"namespace":[],"recentTurns":[]}';
@@ -886,7 +1270,10 @@
     // --- Load notebook from slug cells ---
     function loadFromSlug(session) {
       landing.classList.add('hidden');
+      libraryView.classList.add('hidden');
       notebook.classList.remove('hidden');
+      currentNotebookSlug = String(session.slug || '').match(/^[a-f0-9]+$/) ? session.slug : '';
+      bookmarkNotebookBtn.classList.toggle('hidden', !currentNotebookSlug);
       showPublishButton();
       notebook.innerHTML = '';
       window._lastContext = '{"namespace":[],"recentTurns":[]}';
@@ -1279,11 +1666,14 @@
     // --- "New" button: reset to landing ---
     document.getElementById('new-btn').addEventListener('click', () => {
       notebook.classList.add('hidden');
+      libraryView.classList.add('hidden');
       saveBtn.classList.add('hidden');
       shareNotebookBtn.classList.add('hidden');
+      bookmarkNotebookBtn.classList.add('hidden');
       notebook.innerHTML = '';
       landing.classList.remove('hidden');
       cellCounter = 0;
+      currentNotebookSlug = '';
       document.title = 'pyreplab notebook';
       history.replaceState(null, '', '/');
     });
@@ -1291,12 +1681,9 @@
     // --- Publish button ---
     saveBtn.addEventListener('click', publishNotebookInsight);
     shareNotebookBtn.addEventListener('click', () => saveNotebookSlug());
-
-    // --- "+ Cell" button ---
-    document.getElementById('add-top-btn').addEventListener('click', () => {
-      if (notebook.classList.contains('hidden')) return;
-      const cell = addCell('ask');
-      cell.querySelector('.cell-input').focus();
+    bookmarkNotebookBtn.addEventListener('click', () => {
+      if (!currentNotebookSlug) return;
+      saveBookmark('notebook', currentNotebookSlug, bookmarkNotebookBtn);
     });
 
     // --- Cell management ---
@@ -1745,20 +2132,39 @@
       }
     };
 
-    // --- Load from slug URL on page load ---
+    renderAppRoute();
+
+    // --- Remix a public insight into an editable notebook ---
     (async function() {
-      const match = location.pathname.match(/^\/s\/([a-f0-9]+)$/);
-      if (!match) return;
+      const params = new URLSearchParams(location.search);
+      const remixId = params.get('remix') || sessionStorage.getItem('pendingRemix');
+      if (!remixId) return;
+      sessionStorage.removeItem('pendingRemix');
+      await remixInsight(remixId);
+    })();
+
+    // Slug routes are handled by renderAppRoute so browser back/forward restores notebooks.
+
+    // --- Resume bookmark after auth redirect ---
+    (async function() {
+      const token = localStorage.getItem('authToken') || '';
+      const pending = sessionStorage.getItem('pendingBookmark');
+      if (!token || !pending) return;
       try {
-        const resp = await fetch(`/api/load/${match[1]}`);
-        if (!resp.ok) return;
-        const session = await resp.json();
-        loadFromSlug(session);
-        if (!ready) {
-          statusEl.textContent = 'loading...';
-          statusEl.className = 'loading';
+        const bookmark = JSON.parse(pending);
+        await fetchJson('/api/me/bookmarks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeader() },
+          body: JSON.stringify(bookmark.type === 'insight' ? { type: 'insight', id: bookmark.key } : { type: 'notebook', slug: bookmark.key }),
+        });
+        sessionStorage.removeItem('pendingBookmark');
+        if (bookmark.type === 'notebook' && bookmarkNotebookBtn && bookmark.key === currentNotebookSlug) {
+          bookmarkNotebookBtn.textContent = 'Bookmarked';
         }
-      } catch {}
+        if (location.pathname === '/me') renderAppRoute();
+      } catch (err) {
+        if (err.status === 401) localStorage.removeItem('authToken');
+      }
     })();
 
     // --- Resume publish after auth redirect ---

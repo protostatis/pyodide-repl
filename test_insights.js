@@ -9,11 +9,21 @@ process.env.JWT_SECRET = "test-secret";
 const {
   generateInsightSlug,
   parseInsightId,
+  publicAuthorSlug,
   publicInsightResponse,
   renderAuthCallbackPage,
   renderInsightHtml,
   renderInsightSvg,
   getInsightQualityIssues,
+  initInsightsDb,
+  insertInsight,
+  listAuthorPublicInsights,
+  listCurrentUserInsights,
+  listPublicInsights,
+  listRelatedInsights,
+  listUserBookmarks,
+  saveUserBookmark,
+  deleteUserBookmark,
   validateInsightPayload,
 } = await import("./server.js");
 
@@ -53,6 +63,61 @@ test("insight payload validation caps unsafe or oversized fields", () => {
   assert.equal(payload.notebook.cells.length, 100);
   assert.equal(payload.evidenceFacts.length, 1);
   assert.equal(payload.evidenceFacts[0].metric, "13,019");
+});
+
+test("insight lists expose author slugs and user bookmarks", () => {
+  const db = initInsightsDb(":memory:");
+  const alice = { sub: "alice-123", name: "Alice Analyst", email: "alice@example.test", picture: "" };
+  const bob = { sub: "bob-456", name: "Bob Builder", email: "bob@example.test", picture: "" };
+  const payload = (title, notebookSlug = "") => ({
+    title,
+    description: "A finished public description.",
+    takeaway: `${title} has a finished conclusion supported by the attached evidence.`,
+    visibility: "public",
+    notebookSlug,
+    evidenceFacts: [{ metric: "42", label: "supporting facts", detail: "A checked public result." }],
+    cells: [{ type: "ask", code: "what changed?", outputText: "The analysis has a finished conclusion with supporting data." }],
+  });
+
+  try {
+    const aliceInsight = insertInsight(db, alice, payload("AI demand keeps rising", "abc123"));
+    const bobInsight = insertInsight(db, bob, payload("Open models are moving"));
+
+    const mine = listCurrentUserInsights(db, alice);
+    assert.equal(mine.length, 1);
+    assert.equal(mine[0].id, aliceInsight.id);
+    assert.equal(mine[0].notebookSlug, "abc123");
+
+    const recent = listPublicInsights(db, { limit: 10 });
+    assert.equal(recent.length, 2);
+    assert.ok(recent.every((item) => item.author.slug && !item.author.email));
+
+    const aliceSlug = publicAuthorSlug(alice.sub, alice.name);
+    const authorPage = listAuthorPublicInsights(db, aliceSlug);
+    assert.equal(authorPage.author.slug, aliceSlug);
+    assert.equal(authorPage.insights.length, 1);
+
+    const related = listRelatedInsights(db, { ...mine[0], author: { sub: alice.sub, name: alice.name }, notebook: { cells: [] }, body: {} }, 4);
+    assert.equal(related[0].id, bobInsight.id);
+
+    saveUserBookmark(db, alice, { type: "insight", id: bobInsight.id });
+    const notebookPath = join(process.cwd(), "slugs", "feedbeef.json");
+    writeFileSync(notebookPath, JSON.stringify({ slug: "feedbeef", created: "2026-05-13T00:00:00.000Z", title: "Saved notebook", cells: [{ type: "code", code: "print(1)", html: "" }] }));
+    try {
+      saveUserBookmark(db, alice, { type: "notebook", slug: "feedbeef" });
+      const bookmarks = listUserBookmarks(db, alice);
+      assert.equal(bookmarks.length, 2);
+      assert.ok(bookmarks.some((bookmark) => bookmark.type === "insight" && bookmark.target.id === bobInsight.id));
+      assert.ok(bookmarks.some((bookmark) => bookmark.type === "notebook" && bookmark.target.slug === "feedbeef"));
+    } finally {
+      unlinkSync(notebookPath);
+    }
+
+    deleteUserBookmark(db, alice, { type: "insight", id: bobInsight.id });
+    assert.equal(listUserBookmarks(db, alice).some((bookmark) => bookmark.key === bobInsight.id), false);
+  } finally {
+    db.close();
+  }
 });
 
 test("public insight page escapes notebook source and output", () => {
