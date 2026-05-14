@@ -12,6 +12,15 @@ test("shared routes load client assets from the site root", () => {
   assert.match(index, /history\.replaceState\(null, '', `\/s\/\$\{data\.slug\}`\)/);
   assert.match(index, /Publish insight/);
   assert.match(index, /Copy notebook link/);
+  assert.match(index, /Explore/);
+  assert.match(index, /My library/);
+  assert.match(index, /bookmark-notebook-btn/);
+  assert.match(index, /renderExploreView/);
+  assert.match(index, /renderMyLibraryView/);
+  assert.match(index, /\/api\/recent-insights/);
+  assert.match(index, /\/api\/me\/bookmarks/);
+  assert.match(index, /pendingBookmark/);
+  assert.match(index, /pendingRemix/);
   assert.match(index, /share-notebook-btn/);
   assert.match(index, /id="publish-dialog"/);
   assert.match(index, /Prepare a readable public artifact/);
