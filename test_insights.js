@@ -22,6 +22,7 @@ const {
   listPublicInsights,
   listRelatedInsights,
   listUserBookmarks,
+  normalizeNotebookShareCells,
   saveUserBookmark,
   deleteUserBookmark,
   validateInsightPayload,
@@ -256,6 +257,62 @@ test("public insight page can render proof previews from attached notebook slug"
     assert.match(html, /Amazon/);
     assert.match(html, /\$1\.8T/);
     assert.match(html, /href="\/s\/abc125"/);
+  } finally {
+    unlinkSync(path);
+  }
+});
+
+test("notebook share cells omit oversized raw html safely", () => {
+  const hugeImage = `data:image/png;base64,${"A".repeat(360000)}`;
+  const cells = normalizeNotebookShareCells([{
+    type: "ask",
+    code: "plot a very large chart",
+    html: `<div onclick="alert(1)"><script>alert(1)</script><img src="${hugeImage}"><span>${"x".repeat(360000)}</span></div>`,
+  }]);
+
+  assert.equal(cells.length, 1);
+  assert.equal(cells[0].type, "ask");
+  assert.match(cells[0].html, /Saved output was too large to reopen safely/);
+  assert.doesNotMatch(cells[0].html, /onclick|<script|data:image/);
+});
+
+test("public insight page ignores oversized raw notebook media from attached slug", () => {
+  const slug = "abc126";
+  const path = join(process.cwd(), "slugs", `${slug}.json`);
+  const hugeImage = `data:image/png;base64,${"A".repeat(360000)}`;
+  writeFileSync(path, JSON.stringify({
+    slug,
+    cells: [{
+      type: "code",
+      code: "show_df(df)",
+      html: `<div class="df-output"><img src="${hugeImage}"><table class="df-table"><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody><tr><td>Safe row</td><td>42</td></tr></tbody></table></div>`,
+    }],
+  }));
+
+  try {
+    const html = renderInsightHtml({
+      id: "abcdef123459",
+      slug: "oversized-slug-proof",
+      title: "Oversized slug proof",
+      description: "",
+      takeaway: "The attached notebook table remains visible without huge inline media.",
+      visibility: "public",
+      author: {},
+      notebook: {
+        notebookSlug: slug,
+        cells: [{
+          type: "code",
+          code: "show_df(df)",
+          outputText: "The attached notebook table remains visible without huge inline media.",
+          outputHtml: "",
+        }],
+      },
+    }, "http://localhost:3000/i/abcdef123459-oversized-slug-proof");
+
+    assert.match(html, /Proof from the notebook/);
+    assert.match(html, /Safe row/);
+    assert.equal(html.includes(hugeImage), false);
+    assert.doesNotMatch(html, /data-omitted-src/);
   } finally {
     unlinkSync(path);
   }
