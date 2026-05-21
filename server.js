@@ -16,6 +16,9 @@ const PORT = parseInt(process.env.PORT || "3000", 10);
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 const MAX_PROXY_REDIRECTS = 5;
 const MAX_PROXY_RESPONSE_BYTES = 10 * 1024 * 1024;
+const MAX_NOTEBOOK_OUTPUT_HTML_CHARS = 350000;
+const MAX_NOTEBOOK_TOTAL_HTML_CHARS = 900000;
+const MAX_INLINE_IMAGE_SRC_CHARS = 350000;
 
 // Load .env file
 const envPath = join(__dirname, ".env");
@@ -218,6 +221,63 @@ function normalizeInsightCells(cells) {
   }));
 }
 
+function oversizedNotebookOutputNotice(html) {
+  const preview = truncateText(htmlToPlainText(html), 1600);
+  const message = preview
+    ? `Saved output was too large to reopen safely. Preview: ${preview}`
+    : "Saved output was too large to reopen safely. Rerun this cell to regenerate it.";
+  return `<span class="stderr">${escapeHtml(message)}</span>`;
+}
+
+function sanitizeNotebookOutputHtml(value, maxLength = MAX_NOTEBOOK_OUTPUT_HTML_CHARS) {
+  const limit = Math.max(0, Math.min(MAX_NOTEBOOK_OUTPUT_HTML_CHARS, Number(maxLength) || 0));
+  if (!limit) return "";
+
+  let html = String(value || "");
+  if (!html) return "";
+
+  html = html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, "")
+    .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, "")
+    .replace(/<iframe\b[^>]*>/gi, "")
+    .replace(/<object\b[\s\S]*?<\/object>/gi, "")
+    .replace(/<object\b[^>]*>/gi, "")
+    .replace(/<embed\b[^>]*>/gi, "")
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/\s+(?:href|src)\s*=\s*(["'])\s*javascript:[^"']*\1/gi, "")
+    .replace(/\s+(?:href|src)\s*=\s*javascript:[^\s>]+/gi, "")
+    .replace(/\bsrc\s*=\s*(["'])(data:image\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=]+)\1/gi, (match, quote, src) => {
+      if (src.length <= MAX_INLINE_IMAGE_SRC_CHARS) return match;
+      return `src=${quote}${quote} data-omitted-src=${quote}large-inline-image${quote}`;
+    });
+
+  return html.length > limit ? oversizedNotebookOutputNotice(html) : html;
+}
+
+function normalizeNotebookShareCells(cells) {
+  if (!Array.isArray(cells)) throw makeHttpError(400, "cells must be an array");
+  let remainingHtml = MAX_NOTEBOOK_TOTAL_HTML_CHARS;
+  return cells.slice(0, 100).map((cell) => {
+    const html = sanitizeNotebookOutputHtml(cell?.html, remainingHtml);
+    remainingHtml = Math.max(0, remainingHtml - html.length);
+    return {
+      type: ["code", "ask"].includes(cell?.type) ? cell.type : "code",
+      code: truncateText(cell?.code, 20000),
+      html,
+    };
+  }).filter((cell) => cell.code.trim());
+}
+
+function publicNotebookSession(session) {
+  return {
+    slug: normalizeNotebookSlug(session?.slug),
+    created: truncateText(session?.created, 80),
+    title: truncateText(session?.title, 200),
+    cells: normalizeNotebookShareCells(Array.isArray(session?.cells) ? session.cells : []),
+  };
+}
+
 function normalizeNotebookSlug(value) {
   const slug = String(value || "").trim().toLowerCase();
   return /^[a-f0-9]{1,64}$/.test(slug) ? slug : "";
@@ -397,10 +457,12 @@ function cellsWithNotebookProof(cells, notebookSlug) {
   const session = loadNotebookSession(notebookSlug);
   if (!session) return cells;
   const sessionCells = session.cells || [];
-  return cells.map((cell, index) => ({
-    ...cell,
-    outputHtml: cell?.outputHtml || sessionCells[index]?.html || "",
-  }));
+  let remainingHtml = MAX_NOTEBOOK_TOTAL_HTML_CHARS;
+  return cells.map((cell, index) => {
+    const outputHtml = sanitizeNotebookOutputHtml(cell?.outputHtml || sessionCells[index]?.html || "", remainingHtml);
+    remainingHtml = Math.max(0, remainingHtml - outputHtml.length);
+    return { ...cell, outputHtml };
+  });
 }
 
 function rowToInsight(row) {
@@ -963,7 +1025,7 @@ function renderProofImages(html, caption) {
 function renderProofPreviews(cells, notebookSlug) {
   const previews = [];
   for (const [index, cell] of cells.entries()) {
-    const html = String(cell?.outputHtml || "");
+    const html = sanitizeNotebookOutputHtml(cell?.outputHtml || "");
     if (!html || previews.length >= 4) continue;
     const caption = proofCaptionFromHtml(html, traceCellTitle(cell, index));
     for (const image of renderProofImages(html, caption)) {
@@ -1173,7 +1235,7 @@ function renderInsightHtml(insight, canonicalUrl, relatedInsights = []) {
   <style>.datum-reel{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:14px;align-items:stretch;margin:16px 0 18px}.datum-reel.single{grid-template-columns:1fr}.datum-stage{position:relative;min-height:210px;background:#a6ff73;color:#080b0a;border:1px solid #d6ffc5;box-shadow:8px 8px 0 rgba(239,227,200,.16);padding:18px 20px;overflow:hidden}.datum-stage .label{color:#203517}.datum-card[hidden]{display:none}.datum-metric{font:900 clamp(3rem,12vw,7.4rem)/.82 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:-.1em;margin:8px 0 6px}.datum-label{font:900 clamp(1.1rem,3vw,2rem)/1.02 Georgia,'Times New Roman',serif;letter-spacing:-.04em;max-width:720px}.datum-card p{max-width:760px;margin:10px 0 0;color:#203517;font:700 .95rem/1.35 ui-monospace,SFMono-Regular,Menlo,monospace}.datum-controls{display:flex;flex-direction:column;justify-content:space-between;background:rgba(15,19,14,.94);border:1px solid #31382d;padding:14px}.datum-controls button{cursor:pointer;border:1px solid #3d4938;background:#11180f;color:#edf2e8;padding:10px 12px;font:800 .68rem/1 'Courier New',monospace;letter-spacing:.1em;text-transform:uppercase}.datum-controls button:hover,.datum-controls button:focus{border-color:#a6ff73;color:#a6ff73;outline:none}.datum-pips{display:flex;gap:7px;justify-content:center;flex-wrap:wrap}.datum-pips button{width:13px;height:13px;padding:0;border-radius:999px;background:#263024}.datum-pips button[aria-current=true]{background:#a6ff73}@media (max-width:760px){.datum-reel{grid-template-columns:1fr}.datum-controls{flex-direction:row;align-items:center}.datum-stage{min-height:190px}.datum-metric{font-size:clamp(3rem,22vw,5.5rem)}} </style>
   <style>.evidence-card{background:#10140f}.receipt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.receipt{border:1px solid #31382d;background:#080b0a;padding:14px;min-height:150px}.receipt-metric{color:#a6ff73;font:900 clamp(1.8rem,5vw,3.4rem)/.9 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:-.08em}.receipt-label{margin-top:5px;color:#fbfff7;font:800 .9rem/1.22 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.01em}.receipt p{margin:9px 0 0;color:#cbd5c2}.receipt-source{font-size:.78rem;color:#8f9a87}.receipt-source a{color:#a6ff73;overflow-wrap:anywhere}.work-summary{border:1px solid #31382d;background:#0b100c;padding:14px;margin:12px 0}.work-summary h3{margin-top:0}.work-summary ul{margin:0;padding-left:20px;color:#cbd5c2}.trace{margin-top:12px}.cell-label{margin:10px 0 4px;color:#9aa391;font:800 .68rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase}@media (max-width:760px){.receipt-grid{grid-template-columns:1fr}}</style>
   <style>.proof-card{background:#0d120e;border-color:#3a4935}.proof-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:12px}.proof-head .muted{margin:0;color:#9aa391}.proof-link{border:1px solid #a6ff73;color:#a6ff73;text-decoration:none;padding:8px 10px;font:800 .68rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}.proof-link:hover{background:#a6ff73;color:#081008}.proof-grid{display:grid;gap:12px}.proof-item{margin:0;border:1px solid #31382d;background:#080b0a;overflow:auto}.proof-item figcaption{padding:10px 12px;color:#d3a84b;font:800 .68rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid #31382d}.proof-shot img{display:block;width:100%;height:auto}.proof-table{width:100%;border-collapse:collapse;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}.proof-table th,.proof-table td{padding:7px 9px;border-bottom:1px solid #20281f;text-align:left;vertical-align:top}.proof-table th{color:#a6ff73;background:#10170f;font-weight:800}.proof-table td{color:#dbe5d3}.proof-table tr:nth-child(even) td{background:rgba(255,255,255,.025)}@media (max-width:760px){.proof-head{display:grid}.proof-link{justify-self:start}}</style>
-  <style>.trace{display:grid;gap:12px}.trace>h3{margin:0;color:#fbf7eb;font-size:1rem}.trace-cell{border:1px solid #31382d;background:#0a0f0b;padding:14px}.trace-head{display:flex;gap:12px;align-items:flex-start}.trace-index{display:inline-grid;place-items:center;min-width:34px;height:34px;border:1px solid #a6ff73;color:#a6ff73;font:800 .72rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}.trace-head h3{margin:0;color:#fbf7eb}.trace-head p{margin:3px 0 0;color:#9aa391;font:700 .72rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.06em}.trace-output{margin:0;color:#dbe5d3;line-height:1.55}.trace-code{max-height:220px}.raw-output{margin-top:10px}.raw-output summary{font-size:.72rem;color:#d3a84b}.raw-output pre{max-height:320px}</style>
+  <style>.trace{display:grid;gap:12px}.trace>h3{margin:0;color:#fbf7eb;font-size:1rem}.trace-cell{border:1px solid #31382d;background:#0a0f0b;padding:14px}.trace-head{display:flex;gap:12px;align-items:flex-start}.trace-index{display:inline-grid;place-items:center;min-width:34px;height:34px;border:1px solid #a6ff73;color:#a6ff73;font:800 .72rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}.trace-head h3{margin:0;color:#fbf7eb}.trace-head p{margin:3px 0 0;color:#9aa391;font:700 .72rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.06em}.trace-output{margin:0;color:#dbe5d3;line-height:1.55}.trace-code{max-height:220px}.raw-output{margin-top:10px}.raw-output summary{font-size:.72rem;color:#d3a84b}.raw-output pre{max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}</style>
   <style>.bookmark-action,.related-actions button{cursor:pointer;border:1px solid #a6ff73;background:#10170f;color:#a6ff73;padding:10px 12px;font:800 .68rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase}.bookmark-action:hover,.bookmark-action:focus,.related-actions button:hover,.related-actions button:focus{background:#a6ff73;color:#081008;outline:none}.related-card-wrap{background:#0d120e}.related-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.related-card{border:1px solid #31382d;background:#080b0a;padding:14px;display:grid;gap:10px}.related-title{color:#fbf7eb;text-decoration:none;font:800 1rem/1.22 Georgia,'Times New Roman',serif}.related-title:hover{color:#a6ff73}.related-card p{margin:0;color:#cbd5c2}.related-meta{display:grid;gap:4px;color:#8f9a87;font:700 .68rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.06em}.related-meta a{color:#d3a84b;text-decoration:none}.related-actions{display:flex;gap:8px;flex-wrap:wrap}.related-actions a{border:1px solid #3d4938;color:#edf2e8;text-decoration:none;padding:9px 11px;font:800 .68rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase}@media (max-width:760px){.related-grid{grid-template-columns:1fr}}</style>
   <script>document.addEventListener('DOMContentLoaded',()=>{const cards=[...document.querySelectorAll('[data-datum-card]')];if(cards.length<2)return;const pips=[...document.querySelectorAll('[data-datum-jump]')];let i=0;const show=n=>{i=(n+cards.length)%cards.length;cards.forEach((card,idx)=>{card.hidden=idx!==i;card.classList.toggle('active',idx===i)});pips.forEach((pip,idx)=>idx===i?pip.setAttribute('aria-current','true'):pip.removeAttribute('aria-current'))};document.querySelector('[data-datum-prev]')?.addEventListener('click',()=>show(i-1));document.querySelector('[data-datum-next]')?.addEventListener('click',()=>show(i+1));pips.forEach((pip,idx)=>pip.addEventListener('click',()=>show(idx)));if(!matchMedia('(prefers-reduced-motion: reduce)').matches)setInterval(()=>show(i+1),4200);});</script>
   <script>document.addEventListener('DOMContentLoaded',()=>{const buttons=[...document.querySelectorAll('[data-bookmark-insight]')];if(!buttons.length)return;const startSignIn=()=>{const intent='bookmark';sessionStorage.setItem('authIntent',intent);sessionStorage.setItem('authReturnTo',location.pathname+location.search+location.hash||'/');if(['localhost','127.0.0.1','0.0.0.0','[::1]'].includes(location.hostname)){location.href='/auth/dev-token?intent='+encodeURIComponent(intent);return}const state=crypto.getRandomValues(new Uint32Array(4)).join('-');sessionStorage.setItem('authState',state);const loginUrl=new URL('/auth/login','https://unchainedsky.com');loginUrl.searchParams.set('redirect_uri',location.origin+'/auth/callback');loginUrl.searchParams.set('scope','share');loginUrl.searchParams.set('state',state);loginUrl.searchParams.set('intent',intent);location.href=loginUrl.toString()};const save=async(button)=>{const token=localStorage.getItem('authToken')||'';if(!token){startSignIn();return}button.disabled=true;const original=button.textContent;button.textContent='Saving...';try{const resp=await fetch('/api/me/bookmarks',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({type:'insight',id:button.dataset.bookmarkInsight})});if(resp.status===401){localStorage.removeItem('authToken');startSignIn();return}if(!resp.ok)throw new Error('Bookmark failed');button.textContent='Bookmarked';button.dataset.saved='true'}catch{button.textContent='Try again';setTimeout(()=>{button.textContent=original;button.disabled=false},1400);return}button.disabled=false};buttons.forEach(button=>button.addEventListener('click',()=>save(button)));});</script>
@@ -1645,29 +1707,23 @@ const server = createServer(async (req, res) => {
 
   // --- Slugs: save/load notebook sessions ---
   if (req.url === "/api/save" && req.method === "POST") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
     try {
-      const data = JSON.parse(body);
-      if (!data.cells || !Array.isArray(data.cells)) {
-        res.writeHead(400);
-        res.end(JSON.stringify({ error: "Missing cells array" }));
-        return;
-      }
+      const data = await readJsonBody(req, MAX_JSON_BODY_BYTES);
       const slug = randomBytes(4).toString("hex");
       const session = {
         slug,
         created: new Date().toISOString(),
-        title: data.title || "",
-        cells: data.cells.slice(0, 100), // cap at 100 cells
+        title: truncateText(data.title, 200),
+        cells: normalizeNotebookShareCells(data.cells),
       };
       writeFileSync(join(SLUGS_DIR, `${slug}.json`), JSON.stringify(session));
       res.setHeader("Content-Type", "application/json");
       res.writeHead(200);
       res.end(JSON.stringify({ slug, url: `/s/${slug}` }));
-    } catch {
-      res.writeHead(400);
-      res.end(JSON.stringify({ error: "Invalid request" }));
+    } catch (err) {
+      res.setHeader("Content-Type", "application/json");
+      res.writeHead(err.statusCode || 400);
+      res.end(JSON.stringify({ error: err.message || "Invalid request" }));
     }
     return;
   }
@@ -1680,9 +1736,15 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({ error: "Not found" }));
       return;
     }
+    const session = loadNotebookSession(slug);
+    if (!session) {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: "Not found" }));
+      return;
+    }
     res.setHeader("Content-Type", "application/json");
     res.writeHead(200);
-    res.end(readFileSync(path));
+    res.end(JSON.stringify(publicNotebookSession(session)));
     return;
   }
 
@@ -2245,6 +2307,7 @@ export {
   listPublicInsights,
   listRelatedInsights,
   listUserBookmarks,
+  normalizeNotebookShareCells,
   parseInsightId,
   publicInsightResponse,
   publicAuthorSlug,
