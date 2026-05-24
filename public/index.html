@@ -157,12 +157,19 @@
     .landing-action strong { display: block; color: var(--insight-paper); font-size: 17px; line-height: 1.2; margin-bottom: 7px; }
     .landing-action span { display: block; color: var(--insight-muted); font-size: 12px; line-height: 1.45; }
     .landing-action.primary {
-      border-color: #fff1c7; background: var(--insight-paper); color: #12150f;
-      box-shadow: 8px 8px 0 rgba(156,255,110,.18);
+      position: relative; padding-right: 118px;
+      border-color: var(--insight-green); background: var(--insight-green); color: #081008;
+      box-shadow: 7px 7px 0 #26351f;
     }
-    .landing-action.primary strong, .landing-action.primary span { color: #12150f; }
+    .landing-action.primary strong, .landing-action.primary span { color: #081008; }
+    .landing-action.primary::after {
+      content: 'Choose file'; position: absolute; right: 16px; bottom: 16px;
+      border: 1px solid rgba(8,16,8,.55); padding: 6px 8px;
+      font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
+      color: #081008; background: rgba(255,255,255,.16);
+    }
     .landing-action:hover { transform: translate(-1px, -1px); border-color: var(--insight-green); }
-    .landing-action.primary:hover { background: #fff4da; }
+    .landing-action.primary:hover { background: #b7ff99; box-shadow: 9px 9px 0 #26351f; }
     .learn-panel {
       margin: 0 0 28px;
       padding: 22px;
