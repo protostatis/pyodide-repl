@@ -727,6 +727,217 @@ location.replace(safeReturnTo);
 </script></body></html>`;
 }
 
+function renderPythonPandasCsvTutorial(canonicalUrl) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Learn pandas with a CSV | pyreplab</title>
+  <meta name="description" content="A beginner pandas tutorial for loading a CSV, inspecting columns, grouping rows, and plotting the result in a browser Python lab.">
+  <link rel="canonical" href="${escapeAttr(canonicalUrl)}">
+  <style>
+    :root {
+      color-scheme: dark;
+      --paper: #f4ead5;
+      --ink: #161b16;
+      --bg: #080b0a;
+      --panel: #101511;
+      --panel-2: #182016;
+      --line: #344130;
+      --muted: #b7c0ae;
+      --accent: #9cff6e;
+      --accent-2: #ffd36a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        linear-gradient(90deg, rgba(156,255,110,.08) 1px, transparent 1px) 0 0 / 54px 54px,
+        linear-gradient(rgba(156,255,110,.06) 1px, transparent 1px) 0 0 / 54px 54px,
+        radial-gradient(circle at 78% 12%, rgba(255,211,106,.18), transparent 34rem),
+        var(--bg);
+      color: #eef5e8;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      line-height: 1.6;
+    }
+    a { color: var(--accent); }
+    .wrap { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
+    header { padding: 48px 0 28px; }
+    .eyebrow { color: var(--accent); font-size: 13px; letter-spacing: .18em; text-transform: uppercase; }
+    h1 {
+      max-width: 900px;
+      margin: 18px 0 18px;
+      color: var(--paper);
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: clamp(42px, 8vw, 88px);
+      line-height: .92;
+      letter-spacing: -0.055em;
+    }
+    .lede { max-width: 760px; color: #dfe8d8; font-size: clamp(17px, 2vw, 22px); }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 10px 16px;
+      border: 1px solid var(--accent);
+      color: var(--ink);
+      background: var(--accent);
+      font-weight: 800;
+      text-decoration: none;
+      box-shadow: 6px 6px 0 #26351f;
+    }
+    .button.secondary { color: var(--paper); background: transparent; border-color: var(--line); }
+    main { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 28px; padding: 18px 0 60px; }
+    section, aside {
+      background: rgba(16, 21, 17, .92);
+      border: 1px solid var(--line);
+      box-shadow: 0 24px 80px rgba(0,0,0,.32);
+    }
+    section { padding: clamp(22px, 4vw, 38px); }
+    aside { align-self: start; position: sticky; top: 18px; padding: 22px; }
+    h2 {
+      margin: 0 0 12px;
+      color: var(--accent-2);
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1;
+      letter-spacing: -0.035em;
+    }
+    h3 { margin: 28px 0 8px; color: var(--paper); font-size: 18px; }
+    p { margin: 0 0 16px; }
+    ol, ul { padding-left: 22px; }
+    li { margin: 8px 0; }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    code { color: var(--accent); }
+    pre {
+      overflow-x: auto;
+      margin: 18px 0 26px;
+      padding: 18px;
+      background: #050705;
+      border: 1px solid #2a3627;
+      color: #eaf4e4;
+    }
+    .lesson { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 24px; }
+    .note { border-left: 4px solid var(--accent); padding: 12px 14px; background: rgba(156,255,110,.08); color: #e7f0df; }
+    .toc a { display: block; padding: 8px 0; color: var(--muted); text-decoration: none; }
+    .toc a:hover { color: var(--accent); }
+    .card { margin-top: 18px; padding: 16px; background: var(--panel-2); border: 1px solid var(--line); }
+    .label { color: var(--accent); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
+    @media (max-width: 860px) {
+      main { grid-template-columns: 1fr; }
+      aside { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <header class="wrap">
+    <div class="eyebrow">Beginner Python tutorial</div>
+    <h1>Learn pandas by asking one good question of a CSV.</h1>
+    <p class="lede">This walkthrough shows the beginner loop: load a dataset, inspect it, group it, plot it, and write one plain-English takeaway. You can run the same steps in the browser lab without installing Python first.</p>
+    <div class="actions">
+      <a class="button" href="/">Open the browser lab</a>
+      <a class="button secondary" href="#code">Jump to the code</a>
+    </div>
+  </header>
+  <main class="wrap">
+    <section>
+      <h2>What you will practice</h2>
+      <p>This tutorial is for the first week of pandas: not model training, not dashboards, just enough data work to answer a real question.</p>
+      <ul>
+        <li>Load a CSV with <code>pd.read_csv</code>.</li>
+        <li>Check rows, columns, and data types before guessing.</li>
+        <li>Use <code>groupby</code> to summarize a category.</li>
+        <li>Sort the result and make a simple bar chart.</li>
+        <li>Explain what the chart does and does not prove.</li>
+      </ul>
+
+      <div class="lesson" id="question">
+        <h2>1. Start with a question</h2>
+        <p>A good beginner data question is narrow enough that you can answer it with one table or one chart.</p>
+        <p class="note">Example: In a movie ratings CSV, which genre has the highest average rating?</p>
+        <p>That question gives you a clear path: find the genre column, find the rating column, group by genre, calculate the average, then sort.</p>
+      </div>
+
+      <div class="lesson" id="inspect">
+        <h2>2. Inspect before analyzing</h2>
+        <p>Most beginner pandas errors come from assuming column names or data types. Inspect the file first.</p>
+        <pre><code>import pandas as pd
+
+df = pd.read_csv("movies.csv")
+
+print(df.shape)
+print(df.columns)
+print(df.dtypes)
+df.head()</code></pre>
+        <p>Look for the exact spelling of the columns you need. <code>Rating</code>, <code>rating</code>, and <code>imdb_rating</code> are different names to pandas.</p>
+      </div>
+
+      <div class="lesson" id="clean">
+        <h2>3. Keep only the rows you can trust</h2>
+        <p>If the rating column has missing values or text mixed into it, clean that before grouping.</p>
+        <pre><code>df["rating"] = pd.to_numeric(df["rating"], errors="coerce")
+clean = df.dropna(subset=["genre", "rating"])</code></pre>
+        <p><code>errors="coerce"</code> turns values pandas cannot parse into missing values. Then <code>dropna</code> removes rows that cannot answer the question.</p>
+      </div>
+
+      <div class="lesson" id="code">
+        <h2>4. Group, sort, and plot</h2>
+        <pre><code>genre_rating = (
+    clean
+    .groupby("genre", as_index=False)["rating"]
+    .mean()
+    .sort_values("rating", ascending=False)
+)
+
+genre_rating.head(10).plot(
+    kind="bar",
+    x="genre",
+    y="rating",
+    title="Average movie rating by genre"
+)</code></pre>
+        <p>Read the chain from top to bottom: choose a grouping column, calculate the average rating for each group, sort the rows, then plot the top results.</p>
+      </div>
+
+      <div class="lesson" id="takeaway">
+        <h2>5. Write one careful takeaway</h2>
+        <p>A chart is not finished until you can say what it means and what it does not mean.</p>
+        <p class="note">Example takeaway: In this dataset, documentaries have the highest average rating. This does not prove documentaries are always better; it may reflect which movies were included in the CSV.</p>
+      </div>
+
+      <div class="lesson">
+        <h2>Try it in the lab</h2>
+        <p>Open the browser lab, load a small CSV, and ask a question like: "Which category has the highest average value?" Then inspect the generated pandas code and edit one line yourself.</p>
+        <div class="actions"><a class="button" href="/">Open pyreplab</a></div>
+      </div>
+    </section>
+
+    <aside>
+      <div class="label">On this page</div>
+      <nav class="toc" aria-label="Tutorial sections">
+        <a href="#question">Start with a question</a>
+        <a href="#inspect">Inspect first</a>
+        <a href="#clean">Clean missing values</a>
+        <a href="#code">Group and plot</a>
+        <a href="#takeaway">Write a takeaway</a>
+      </nav>
+      <div class="card">
+        <div class="label">Beginner rule</div>
+        <p>Before filtering or grouping, print the columns and inspect a few rows. It saves more time than any shortcut.</p>
+      </div>
+      <div class="card">
+        <div class="label">Practice prompt</div>
+        <p>Upload any CSV and ask: "Which column should I inspect first before making a chart?"</p>
+      </div>
+    </aside>
+  </main>
+</body>
+</html>`;
+}
+
 const AI_DEMAND_SOURCE = {
   label: "AI Demand Facts CSV",
   source: "SEC company filings converted into a facts table",
@@ -1515,6 +1726,19 @@ const server = createServer(async (req, res) => {
   res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
 
   const requestUrl = new URL(req.url, getRequestOrigin(req));
+
+  if (requestUrl.pathname === "/learn/python-pandas-csv/" && req.method === "GET") {
+    res.writeHead(301, { Location: "/learn/python-pandas-csv" });
+    res.end();
+    return;
+  }
+
+  if (requestUrl.pathname === "/learn/python-pandas-csv" && req.method === "GET") {
+    const canonicalUrl = `${getRequestOrigin(req, requestUrl.protocol)}/learn/python-pandas-csv`;
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(renderPythonPandasCsvTutorial(canonicalUrl));
+    return;
+  }
 
   if (requestUrl.pathname === "/auth/dev-token" && req.method === "GET") {
     if (process.env.NODE_ENV === "production") {
