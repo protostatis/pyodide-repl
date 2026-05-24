@@ -1,0 +1,17 @@
+{
+  "slug": "44444444",
+  "created": "2026-05-24T00:00:00.000Z",
+  "title": "Stock peers: NVDA versus AMD, AVGO, MSFT, and QQQ",
+  "cells": [
+    {
+      "type": "code",
+      "code": "# Load one year of daily prices for a small peer set.\n# This is for pandas practice, not investment advice.\nsymbols = ['NVDA', 'AMD', 'AVGO', 'MSFT', 'QQQ']\nframes = []\nfor symbol in symbols:\n    hist = await load_ticker(symbol, period='1y')\n    hist['daily_return'] = hist['close'].pct_change()\n    frames.append(hist[['date', 'symbol', 'close', 'daily_return']])\n\nprices = pd.concat(frames).dropna(subset=['daily_return'])\nprint(f'loaded {len(symbols)} symbols and {len(prices):,} daily return rows')\nshow_df(prices.head(10))",
+      "html": "<span class='stdout'>loaded 5 symbols and 1,250 daily return rows</span><div class='df-output'><table class='df-table'><thead><tr><th>date</th><th>symbol</th><th>close</th><th>daily_return</th></tr></thead><tbody><tr><td>2025-05-27</td><td>NVDA</td><td>135.50</td><td>0.033</td></tr><tr><td>2025-05-28</td><td>NVDA</td><td>134.81</td><td>-0.005</td></tr><tr><td>2025-05-29</td><td>NVDA</td><td>139.19</td><td>0.032</td></tr></tbody></table></div>"
+    },
+    {
+      "type": "ask",
+      "code": "compare return, volatility, and correlation to NVDA",
+      "html": "<span class='llm-note'>Pivot prices, compute returns, then summarize each ticker</span><div class='generated-code'>import math\n\nwide_close = prices.pivot(index='date', columns='symbol', values='close').dropna()\nwide_returns = wide_close.pct_change().dropna()\n\nsummary = pd.DataFrame({\n    'one_year_return_%': (wide_close.iloc[-1] / wide_close.iloc[0] - 1) * 100,\n    'annual_volatility_%': wide_returns.std() * math.sqrt(252) * 100,\n    'corr_to_NVDA': wide_returns.corr()['NVDA'],\n}).round(2).reset_index().rename(columns={'index': 'symbol'})\n\nshow_df(summary.sort_values('corr_to_NVDA', ascending=False))</div><div class='df-output'><table class='df-table'><thead><tr><th>symbol</th><th>one_year_return_%</th><th>annual_volatility_%</th><th>corr_to_NVDA</th></tr></thead><tbody><tr><td>NVDA</td><td>64.00</td><td>34.00</td><td>1.00</td></tr><tr><td>QQQ</td><td>40.90</td><td>16.10</td><td>0.69</td></tr><tr><td>AVGO</td><td>81.10</td><td>42.70</td><td>0.53</td></tr><tr><td>AMD</td><td>323.80</td><td>64.60</td><td>0.48</td></tr><tr><td>MSFT</td><td>-7.00</td><td>23.80</td><td>0.37</td></tr></tbody></table></div><div class='agent-summary'>This notebook compares peer behavior without making a price forecast. It shows how return, volatility, and correlation tell different stories than a price chart alone.</div>"
+    }
+  ]
+}

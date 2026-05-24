@@ -980,6 +980,109 @@ genre_rating.head(10).plot(
 </html>`;
 }
 
+function renderStockComparisonTutorial(canonicalUrl) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stock comparison notebooks | pyreplab</title>
+  <meta name="description" content="Editable pandas notebooks for comparing stock peers, pre-market read-throughs, volatility, and daily return correlations in the browser.">
+  <link rel="canonical" href="${escapeAttr(canonicalUrl)}">
+  <style>
+    :root { color-scheme: dark; --bg:#080b0a; --panel:#101511; --line:#344130; --paper:#f4ead5; --muted:#b7c0ae; --accent:#9cff6e; --blue:#79c0ff; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:radial-gradient(circle at 78% 8%, rgba(121,192,255,.18), transparent 30rem), linear-gradient(90deg, rgba(156,255,110,.06) 1px, transparent 1px) 0 0/54px 54px, var(--bg); color:#eef5e8; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; line-height:1.6; }
+    a { color: var(--accent); }
+    .wrap { width:min(1120px, calc(100% - 32px)); margin:0 auto; }
+    header { padding:52px 0 26px; }
+    .eyebrow { color:var(--blue); font-size:13px; letter-spacing:.18em; text-transform:uppercase; }
+    h1 { max-width:920px; margin:18px 0; color:var(--paper); font-family:Georgia,'Times New Roman',serif; font-size:clamp(42px, 8vw, 86px); line-height:.94; letter-spacing:-.055em; }
+    .lede { max-width:790px; color:#dfe8d8; font-size:clamp(17px, 2vw, 22px); }
+    main { display:grid; grid-template-columns:minmax(0,1fr) 310px; gap:28px; padding:18px 0 60px; }
+    section, aside { background:rgba(16,21,17,.92); border:1px solid var(--line); box-shadow:0 24px 80px rgba(0,0,0,.32); }
+    section { padding:clamp(22px, 4vw, 38px); }
+    aside { align-self:start; position:sticky; top:18px; padding:22px; }
+    h2 { margin:0 0 12px; color:#ffd36a; font-family:Georgia,'Times New Roman',serif; font-size:clamp(28px, 4vw, 42px); line-height:1; letter-spacing:-.035em; }
+    p { margin:0 0 16px; }
+    code, pre { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+    code { color:var(--accent); }
+    pre { overflow-x:auto; margin:18px 0 26px; padding:18px; background:#050705; border:1px solid #2a3627; color:#eaf4e4; }
+    .actions, .notebook-grid { display:flex; flex-wrap:wrap; gap:12px; margin-top:22px; }
+    .button, .notebook-card { border:1px solid var(--line); color:#eaf4e4; background:linear-gradient(145deg, rgba(24,32,22,.96), rgba(8,11,10,.92)); text-decoration:none; }
+    .button { display:inline-flex; min-height:44px; align-items:center; padding:10px 16px; color:#101511; background:var(--accent); border-color:var(--accent); font-weight:800; box-shadow:6px 6px 0 #26351f; }
+    .notebook-card { flex:1 1 250px; min-height:190px; padding:16px; box-shadow:5px 5px 0 rgba(121,192,255,.14); }
+    .notebook-card:hover { border-color:var(--accent); transform:translate(-1px,-1px); }
+    .notebook-card strong { display:block; margin:8px 0; color:var(--paper); font-size:17px; line-height:1.25; }
+    .notebook-card span { color:var(--muted); font-size:14px; }
+    .open { margin-top:14px; color:var(--accent); font-weight:800; }
+    .lesson { margin-top:24px; border-top:1px solid var(--line); padding-top:24px; }
+    .note { border-left:4px solid var(--blue); padding:12px 14px; background:rgba(121,192,255,.08); color:#e7f0df; }
+    .toc a { display:block; padding:8px 0; color:var(--muted); text-decoration:none; }
+    .toc a:hover { color:var(--accent); }
+    .card { margin-top:18px; padding:16px; background:#182016; border:1px solid var(--line); }
+    .label { color:var(--blue); font-size:12px; letter-spacing:.14em; text-transform:uppercase; }
+    @media (max-width:860px) { main { grid-template-columns:1fr; } aside { position:static; } }
+  </style>
+</head>
+<body>
+  <header class="wrap">
+    <div class="eyebrow">Market pandas examples</div>
+    <h1>Compare stocks with returns, peers, and correlations.</h1>
+    <p class="lede">These notebooks use market data as pandas practice: load ticker history, calculate daily returns, compare peers, and build a simple pre-market read-through template. They are educational examples, not investment advice.</p>
+    <div class="actions"><a class="button" href="/">Open the data picker</a></div>
+  </header>
+  <main class="wrap">
+    <section>
+      <h2>Editable stock notebooks</h2>
+      <p>Open a notebook, rerun the cells, then change the ticker list or pre-market table.</p>
+      <div class="notebook-grid" id="examples">
+        <a class="notebook-card" href="/s/44444444"><div class="label">Peer comparison</div><strong>NVDA vs AMD, AVGO, MSFT, and QQQ</strong><span>Compare one-year return, annualized volatility, and correlation to NVDA.</span><div class="open">Open notebook</div></a>
+        <a class="notebook-card" href="/s/55555555"><div class="label">Pre-market template</div><strong>Peer-implied move from similar tickers</strong><span>Enter pre-market movers, score feature similarity, and compare actual move to peer read-through.</span><div class="open">Open notebook</div></a>
+        <a class="notebook-card" href="/s/66666666"><div class="label">Correlation matrix</div><strong>Megacap daily return correlations</strong><span>Build a return matrix for AAPL, MSFT, GOOGL, AMZN, META, and SPY.</span><div class="open">Open notebook</div></a>
+      </div>
+
+      <div class="lesson" id="premarket">
+        <h2>Pre-market idea</h2>
+        <p>For a list of tickers moving before the open, create a small feature table: sector, theme, size bucket, product exposure, or index basket. Then compare each ticker against peers with overlapping features.</p>
+        <pre><code>pairs['similarity'] = (
+    same_sector * 2
+    + same_theme * 3
+    + same_size_bucket
+)
+peer_implied_move = weighted_average(peer_moves, similarity)</code></pre>
+        <p class="note">This is a read-through exercise, not a forecast. The useful pandas lesson is the self-join, feature scoring, weighted average, and residual: actual move minus peer-implied move.</p>
+      </div>
+
+      <div class="lesson" id="returns">
+        <h2>Why returns instead of prices</h2>
+        <p>Price levels are not comparable across tickers. Daily returns make correlations, volatility, and relative performance easier to compare.</p>
+        <pre><code>wide_close = prices.pivot(index='date', columns='symbol', values='close')
+wide_returns = wide_close.pct_change().dropna()
+wide_returns.corr()</code></pre>
+      </div>
+
+      <div class="lesson" id="next">
+        <h2>Other notebook ideas</h2>
+        <ul>
+          <li>Earnings-day reaction versus peer basket reaction.</li>
+          <li>Sector ETF beta: ticker returns versus QQQ, SPY, XLK, or SMH.</li>
+          <li>Rolling 30-day correlation to see when relationships break.</li>
+          <li>Volume spike days and whether they line up with large returns.</li>
+          <li>Feature-based peer search for any ticker list pasted before the open.</li>
+        </ul>
+      </div>
+    </section>
+    <aside>
+      <div class="label">On this page</div>
+      <nav class="toc" aria-label="Tutorial sections"><a href="#examples">Example notebooks</a><a href="#premarket">Pre-market idea</a><a href="#returns">Returns vs prices</a><a href="#next">More ideas</a></nav>
+      <div class="card"><div class="label">Safety framing</div><p>Keep this as pandas practice and exploratory analysis. Avoid presenting peer-implied moves as predictions.</p></div>
+    </aside>
+  </main>
+</body>
+</html>`;
+}
+
 const AI_DEMAND_SOURCE = {
   label: "AI Demand Facts CSV",
   source: "SEC company filings converted into a facts table",
@@ -1779,6 +1882,19 @@ const server = createServer(async (req, res) => {
     const canonicalUrl = `${getRequestOrigin(req, requestUrl.protocol)}/learn/python-pandas-csv`;
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end(renderPythonPandasCsvTutorial(canonicalUrl));
+    return;
+  }
+
+  if (requestUrl.pathname === "/learn/stock-comparison-pandas/" && req.method === "GET") {
+    res.writeHead(301, { Location: "/learn/stock-comparison-pandas" });
+    res.end();
+    return;
+  }
+
+  if (requestUrl.pathname === "/learn/stock-comparison-pandas" && req.method === "GET") {
+    const canonicalUrl = `${getRequestOrigin(req, requestUrl.protocol)}/learn/stock-comparison-pandas`;
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(renderStockComparisonTutorial(canonicalUrl));
     return;
   }
 

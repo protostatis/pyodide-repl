@@ -1,0 +1,17 @@
+{
+  "slug": "66666666",
+  "created": "2026-05-24T00:00:00.000Z",
+  "title": "Stock return correlation matrix",
+  "cells": [
+    {
+      "type": "code",
+      "code": "# Load a megacap basket and compare daily return correlations.\nsymbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'SPY']\nframes = []\nfor symbol in symbols:\n    hist = await load_ticker(symbol, period='1y')\n    hist['daily_return'] = hist['close'].pct_change()\n    frames.append(hist[['date', 'symbol', 'close', 'daily_return']])\n\nprices = pd.concat(frames).dropna(subset=['daily_return'])\nprint(f'loaded {len(symbols)} symbols and {len(prices):,} return rows')\nshow_df(prices.head(10))",
+      "html": "<span class='stdout'>loaded 6 symbols and 1,500 return rows</span><div class='df-output'><table class='df-table'><thead><tr><th>date</th><th>symbol</th><th>close</th><th>daily_return</th></tr></thead><tbody><tr><td>2025-05-27</td><td>AAPL</td><td>200.21</td><td>0.020</td></tr><tr><td>2025-05-28</td><td>AAPL</td><td>200.42</td><td>0.001</td></tr><tr><td>2025-05-29</td><td>AAPL</td><td>199.95</td><td>-0.002</td></tr></tbody></table></div>"
+    },
+    {
+      "type": "ask",
+      "code": "make a correlation matrix of daily returns",
+      "html": "<span class='llm-note'>Pivot returns into one column per ticker, then call corr()</span><div class='generated-code'>return_matrix = prices.pivot(index='date', columns='symbol', values='daily_return').dropna()\ncorrelations = return_matrix.corr().round(2)\nshow_df(correlations.reset_index())</div><div class='df-output'><table class='df-table'><thead><tr><th>symbol</th><th>AAPL</th><th>MSFT</th><th>GOOGL</th><th>AMZN</th><th>META</th><th>SPY</th></tr></thead><tbody><tr><td>AAPL</td><td>1.00</td><td>0.12</td><td>0.31</td><td>0.28</td><td>0.19</td><td>0.51</td></tr><tr><td>MSFT</td><td>0.12</td><td>1.00</td><td>0.09</td><td>0.31</td><td>0.34</td><td>0.43</td></tr><tr><td>GOOGL</td><td>0.31</td><td>0.09</td><td>1.00</td><td>0.40</td><td>0.22</td><td>0.56</td></tr><tr><td>AMZN</td><td>0.28</td><td>0.31</td><td>0.40</td><td>1.00</td><td>0.44</td><td>0.59</td></tr><tr><td>META</td><td>0.19</td><td>0.34</td><td>0.22</td><td>0.44</td><td>1.00</td><td>0.52</td></tr><tr><td>SPY</td><td>0.51</td><td>0.43</td><td>0.56</td><td>0.59</td><td>0.52</td><td>1.00</td></tr></tbody></table></div><div class='agent-summary'>Daily return correlation is usually more useful than price correlation. It compares co-movement after removing the trend level from each price series.</div>"
+    }
+  ]
+}
