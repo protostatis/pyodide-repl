@@ -855,7 +855,7 @@ function renderPythonPandasCsvTutorial(canonicalUrl) {
     <h1>Learn pandas by asking one good question of a CSV.</h1>
     <p class="lede">This walkthrough shows the beginner loop: load a dataset, inspect it, group it, plot it, and write one plain-English takeaway. You can run the same steps in the browser lab without installing Python first.</p>
     <div class="actions">
-      <a class="button" href="/">Open the browser lab</a>
+      <a class="button" href="/">Open the data picker</a>
       <a class="button secondary" href="#code">Jump to the code</a>
     </div>
   </header>
@@ -952,7 +952,7 @@ genre_rating.head(10).plot(
       <div class="lesson">
         <h2>Try it in the lab</h2>
         <p>Open the browser lab, load a small CSV, and ask a question like: "Which category has the highest average value?" Then inspect the generated pandas code and edit one line yourself.</p>
-        <div class="actions"><a class="button" href="/">Open pyreplab</a></div>
+        <div class="actions"><a class="button" href="/">Open the data picker</a></div>
       </div>
     </section>
 

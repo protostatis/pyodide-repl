@@ -110,6 +110,31 @@
       -webkit-text-fill-color: transparent;
     }
     #landing .subtitle { color: #6e7681; font-size: 14px; margin-bottom: 32px; }
+    .learn-panel {
+      margin: -12px 0 32px;
+      padding: 16px;
+      border: 1px solid #263044;
+      border-radius: 16px;
+      background:
+        radial-gradient(circle at top right, rgba(210, 168, 255, 0.16), transparent 34%),
+        linear-gradient(135deg, rgba(13, 17, 23, 0.96), rgba(22, 24, 34, 0.96));
+      box-shadow: 0 18px 46px -32px rgba(88, 166, 255, 0.55);
+    }
+    .learn-panel .eyebrow {
+      color: #58a6ff; font-size: 11px; font-weight: 700; letter-spacing: 0.11em;
+      text-transform: uppercase; margin-bottom: 7px;
+    }
+    .learn-panel h3 { color: #f0f6fc; font-size: 18px; margin-bottom: 6px; }
+    .learn-panel p { color: #8b949e; font-size: 13px; line-height: 1.5; max-width: 760px; }
+    .learn-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .learn-links a {
+      color: #c9d1d9; text-decoration: none; font-size: 12px; font-weight: 700;
+      border: 1px solid #30363d; border-radius: 999px; padding: 7px 11px;
+      background: #161b22; transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .learn-links a.primary { color: #0d1117; background: #58a6ff; border-color: #58a6ff; }
+    .learn-links a:hover { color: #58a6ff; border-color: #58a6ff; background: rgba(88, 166, 255, 0.08); }
+    .learn-links a.primary:hover { color: #0d1117; background: #79c0ff; }
 
     .library-view {
       max-width: 1040px; margin: 0 auto; padding: 38px 20px 120px;
@@ -549,6 +574,17 @@
   <div id="landing">
     <h2>Choose your data</h2>
     <p class="subtitle">Pick a dataset to start exploring, or drop your own file anywhere on this page.</p>
+    <section class="learn-panel" aria-labelledby="learn-python-title">
+      <div class="eyebrow">New for beginners</div>
+      <h3 id="learn-python-title">Learn pandas with editable example notebooks</h3>
+      <p>Start with guided CSV exercises for tips, penguins, and Titanic survival rates. Open a notebook, inspect the pandas code, and change it in the browser.</p>
+      <div class="learn-links">
+        <a class="primary" href="/learn/python-pandas-csv">Open the tutorial</a>
+        <a href="/s/11111111">Tips notebook</a>
+        <a href="/s/22222222">Penguins notebook</a>
+        <a href="/s/33333333">Titanic notebook</a>
+      </div>
+    </section>
     <div class="data-grid" id="data-grid"></div>
     <input type="file" id="file-input" accept=".csv,.json,.jsonl,.tsv,.xlsx,.xls" style="display:none">
   </div>
