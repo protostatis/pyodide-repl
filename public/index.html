@@ -5,13 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>pyreplab notebook</title>
   <style>
+    :root {
+      color-scheme: dark;
+      --insight-bg: #080b0a;
+      --insight-panel: #101411;
+      --insight-panel-2: #182016;
+      --insight-paper: #f3ead8;
+      --insight-paper-2: #ddd0b7;
+      --insight-rule: #31382d;
+      --insight-muted: #9aa391;
+      --insight-text: #edf3e8;
+      --insight-green: #9cff6e;
+      --insight-amber: #d3a84b;
+      --insight-blue: #79c0ff;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #0f1117; color: #e0e0e0; min-height: 100vh;
+      background: var(--insight-bg); color: var(--insight-text); min-height: 100vh;
       background-image:
-        radial-gradient(at 20% 0%, rgba(110, 64, 201, 0.08) 0%, transparent 45%),
-        radial-gradient(at 80% 0%, rgba(88, 166, 255, 0.06) 0%, transparent 50%);
+        linear-gradient(90deg, rgba(156,255,110,.035) 1px, transparent 1px),
+        linear-gradient(#080b0a, #0d110e 38rem, #080b0a);
+      background-size: 28px 28px, auto;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(circle at 18% 0, rgba(156,255,110,.12), transparent 24rem),
+        radial-gradient(circle at 100% 20%, rgba(211,168,75,.09), transparent 22rem);
+      mix-blend-mode: screen;
     }
 
     /* --- Keyframes --- */
@@ -55,138 +77,200 @@
     /* Header */
     header {
       padding: 10px 20px;
-      background: rgba(22, 24, 34, 0.85);
+      background: rgba(8, 11, 10, 0.88);
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border-bottom: 1px solid #2a2d3e;
+      border-bottom: 1px solid var(--insight-rule);
       position: sticky;
       top: 0;
       z-index: 10;
     }
     header .left { display: flex; align-items: center; gap: 12px; }
-    header h1 { font-size: 15px; font-weight: 600; color: #c9d1d9; }
+    header h1 {
+      font-size: 13px; font-weight: 800; color: var(--insight-paper);
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
     header h1 span {
-      background: linear-gradient(135deg, #58a6ff 0%, #d2a8ff 100%);
-      -webkit-background-clip: text; background-clip: text;
-      -webkit-text-fill-color: transparent; font-weight: 500;
+      color: var(--insight-green); font-weight: 800;
     }
     #status {
       font-size: 11px; padding: 3px 9px 3px 7px; border-radius: 999px;
-      font-family: monospace; display: inline-flex; align-items: center; gap: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; display: inline-flex; align-items: center; gap: 6px;
       transition: background 0.2s, color 0.2s;
     }
     #status::before {
       content: ''; width: 6px; height: 6px; border-radius: 50%;
       background: currentColor; display: inline-block;
     }
-    #status.idle { background: #0d3320; color: #3fb950; }
+    #status.idle { background: rgba(156,255,110,.12); color: var(--insight-green); }
     #status.idle::before { animation: pulseDot 2.4s ease-in-out infinite; }
-    #status.running { background: #3d2e00; color: #d29922; }
+    #status.running { background: rgba(211,168,75,.14); color: var(--insight-amber); }
     #status.running::before { animation: pulseDot 1s ease-in-out infinite; }
-    #status.loading { background: #0c2d6b; color: #58a6ff; }
+    #status.loading { background: rgba(121,192,255,.13); color: var(--insight-blue); }
     #status.loading::before { animation: pulseDot 1.2s ease-in-out infinite; }
     .header-actions { display: flex; gap: 8px; align-items: center; }
-    .auth-user { color: #8b949e; font-size: 12px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .auth-user { color: var(--insight-muted); font-size: 12px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .header-actions button {
-      padding: 5px 12px; font-size: 12px; background: #21262d;
-      border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; cursor: pointer;
+      padding: 6px 12px; font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+      background: #10170f; text-transform: uppercase;
+      border: 1px solid #3d4938; border-radius: 0; color: var(--insight-text); cursor: pointer;
       transition: background 0.15s, border-color 0.15s, transform 0.1s;
     }
-    .header-actions button:hover { background: #30363d; border-color: #484f58; }
+    .header-actions button:hover { background: var(--insight-green); border-color: var(--insight-green); color: #081008; }
     .header-actions button:active { transform: scale(0.97); }
 
     /* Notebook */
     #notebook { max-width: 960px; margin: 0 auto; padding: 20px 20px 120px; }
 
     /* --- Landing / Data Picker --- */
-    #landing { max-width: 960px; margin: 0 auto; padding: 48px 20px; animation: cellEnter 0.4s ease-out; }
-    #landing h2 {
-      font-size: 28px; font-weight: 700; margin-bottom: 8px;
-      background: linear-gradient(135deg, #c9d1d9 0%, #58a6ff 60%, #d2a8ff 100%);
-      -webkit-background-clip: text; background-clip: text;
-      -webkit-text-fill-color: transparent;
+    #landing { position: relative; max-width: 1120px; margin: 0 auto; padding: 34px 22px 120px; animation: cellEnter 0.4s ease-out; }
+    .landing-hero {
+      display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 34px;
+      align-items: start; margin-bottom: 24px; padding: 40px 0 30px;
+      border-bottom: 1px solid var(--insight-rule);
     }
-    #landing .subtitle { color: #6e7681; font-size: 14px; margin-bottom: 32px; }
+    .landing-eyebrow {
+      color: var(--insight-green); font-size: 12px; font-weight: 800; letter-spacing: 0.16em;
+      text-transform: uppercase; margin-bottom: 10px;
+    }
+    .landing-eyebrow::before { content: '// '; color: var(--insight-amber); }
+    #landing h2 {
+      color: var(--insight-paper); font-family: Georgia, 'Times New Roman', serif;
+      font-size: clamp(38px, 6vw, 68px); line-height: 0.96; font-weight: 500; letter-spacing: -0.045em; margin-bottom: 18px;
+      max-width: 720px;
+    }
+    #landing .subtitle { color: #dfe8d8; font-size: clamp(16px, 2vw, 19px); line-height: 1.5; max-width: 680px; margin-bottom: 0; }
+    .landing-actions { display: grid; gap: 12px; }
+    .landing-action {
+      display: block; width: 100%; text-align: left; text-decoration: none; font: inherit;
+      border: 1px solid var(--insight-rule); border-radius: 0; padding: 16px;
+      background: linear-gradient(145deg, rgba(24,32,22,.96), rgba(8,11,10,.92)); color: var(--insight-text); cursor: pointer;
+      box-shadow: 5px 5px 0 rgba(156,255,110,.10);
+      transition: transform 0.15s ease, border-color 0.15s, background 0.15s, box-shadow 0.2s;
+    }
+    .landing-action strong { display: block; color: var(--insight-paper); font-size: 17px; line-height: 1.2; margin-bottom: 7px; }
+    .landing-action span { display: block; color: var(--insight-muted); font-size: 12px; line-height: 1.45; }
+    .landing-action.primary {
+      border-color: #fff1c7; background: var(--insight-paper); color: #12150f;
+      box-shadow: 8px 8px 0 rgba(156,255,110,.18);
+    }
+    .landing-action.primary strong, .landing-action.primary span { color: #12150f; }
+    .landing-action:hover { transform: translate(-1px, -1px); border-color: var(--insight-green); }
+    .landing-action.primary:hover { background: #fff4da; }
     .learn-panel {
-      margin: -12px 0 32px;
-      padding: 16px;
-      border: 1px solid #263044;
-      border-radius: 16px;
-      background:
-        radial-gradient(circle at top right, rgba(210, 168, 255, 0.16), transparent 34%),
-        linear-gradient(135deg, rgba(13, 17, 23, 0.96), rgba(22, 24, 34, 0.96));
-      box-shadow: 0 18px 46px -32px rgba(88, 166, 255, 0.55);
+      margin: 0 0 28px;
+      padding: 22px;
+      border: 1px solid var(--insight-rule);
+      background: rgba(16, 21, 17, .92);
+      box-shadow: 0 24px 80px rgba(0,0,0,.32);
     }
     .learn-panel .eyebrow {
-      color: #58a6ff; font-size: 11px; font-weight: 700; letter-spacing: 0.11em;
+      color: var(--insight-green); font-size: 11px; font-weight: 800; letter-spacing: 0.16em;
       text-transform: uppercase; margin-bottom: 7px;
     }
-    .learn-panel h3 { color: #f0f6fc; font-size: 18px; margin-bottom: 6px; }
-    .learn-panel p { color: #8b949e; font-size: 13px; line-height: 1.5; max-width: 760px; }
+    .learn-panel h3 {
+      color: var(--insight-paper); font-family: Georgia, 'Times New Roman', serif;
+      font-size: clamp(23px, 3vw, 32px); font-weight: 500; line-height: 1.05; letter-spacing: -0.03em; margin-bottom: 9px;
+    }
+    .learn-panel p { color: #cbd5c2; font-size: 14px; line-height: 1.55; max-width: 820px; }
     .learn-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
     .learn-links a {
-      color: #c9d1d9; text-decoration: none; font-size: 12px; font-weight: 700;
-      border: 1px solid #30363d; border-radius: 999px; padding: 7px 11px;
-      background: #161b22; transition: border-color 0.15s, color 0.15s, background 0.15s;
+      color: var(--insight-text); text-decoration: none; font-size: 12px; font-weight: 700;
+      border: 1px solid #3d4938; border-radius: 0; padding: 9px 11px;
+      background: #10170f; transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.15s;
     }
-    .learn-links a.primary { color: #0d1117; background: #58a6ff; border-color: #58a6ff; }
-    .learn-links a:hover { color: #58a6ff; border-color: #58a6ff; background: rgba(88, 166, 255, 0.08); }
-    .learn-links a.primary:hover { color: #0d1117; background: #79c0ff; }
+    .learn-links a.primary { color: #101511; background: var(--insight-green); border-color: var(--insight-green); box-shadow: 5px 5px 0 #26351f; }
+    .learn-links a:hover { color: var(--insight-green); border-color: var(--insight-green); transform: translate(-1px, -1px); }
+    .learn-links a.primary:hover { color: #101511; background: #b7ff99; }
+    .more-examples { margin-top: 10px; }
+    .more-examples summary {
+      display: inline-flex; cursor: pointer; color: var(--insight-muted);
+      font-size: 12px; font-weight: 700;
+    }
+    .more-examples summary:hover, .more-examples[open] summary { color: var(--insight-green); }
+    .more-examples .learn-links { margin-top: 10px; }
+    .dataset-intro {
+      display: flex; align-items: end; justify-content: space-between; gap: 18px;
+      margin: 26px 0 14px;
+    }
+    .dataset-intro h3 {
+      color: var(--insight-paper); font-family: Georgia, 'Times New Roman', serif;
+      font-size: clamp(27px, 4vw, 38px); font-weight: 500; line-height: 1; letter-spacing: -0.03em; margin-bottom: 8px;
+    }
+    .dataset-intro p { color: #cbd5c2; font-size: 14px; line-height: 1.55; max-width: 700px; }
+    .dataset-intro .hint-text {
+      color: var(--insight-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; white-space: nowrap;
+    }
+    .dataset-sections {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start;
+    }
+    @media (max-width: 760px) {
+      header { flex-wrap: wrap; gap: 10px; }
+      .header-actions { width: 100%; overflow-x: auto; padding-bottom: 2px; }
+      #landing { padding: 28px 16px 96px; }
+      .landing-hero { grid-template-columns: 1fr; padding: 24px 0; }
+      .landing-actions, .dataset-sections { grid-template-columns: 1fr; }
+      .dataset-intro { display: block; }
+      .dataset-intro .hint-text { margin-top: 8px; white-space: normal; }
+    }
 
     .library-view {
-      max-width: 1040px; margin: 0 auto; padding: 38px 20px 120px;
+      position: relative; max-width: 1120px; margin: 0 auto; padding: 34px 22px 120px;
       animation: cellEnter 0.35s ease-out;
     }
     .library-hero {
       display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: end;
-      margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid #21262d;
+      margin-bottom: 22px; padding: 34px 0 24px; border-bottom: 1px solid var(--insight-rule);
     }
     .library-eyebrow {
-      font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-      color: #58a6ff; margin-bottom: 8px;
+      font-size: 11px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+      color: var(--insight-green); margin-bottom: 8px;
     }
     .library-hero h2 {
-      color: #f0f6fc; font-size: clamp(24px, 4vw, 34px); line-height: 1.08; margin-bottom: 8px;
+      color: var(--insight-paper); font-family: Georgia, 'Times New Roman', serif;
+      font-size: clamp(36px, 6vw, 64px); font-weight: 500; line-height: 0.96; letter-spacing: -0.05em; margin-bottom: 12px;
     }
-    .library-hero p { color: #8b949e; font-size: 14px; line-height: 1.55; max-width: 700px; }
+    .library-hero p { color: #cbd5c2; font-size: 15px; line-height: 1.55; max-width: 760px; }
     .library-cta, .library-card-actions a, .library-card-actions button {
-      border: 1px solid #30363d; border-radius: 999px; background: #161b22; color: #c9d1d9;
-      padding: 8px 13px; text-decoration: none; font-size: 12px; font-weight: 700; cursor: pointer;
+      border: 1px solid #3d4938; border-radius: 0; background: #10170f; color: var(--insight-text);
+      padding: 9px 12px; text-decoration: none; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
       transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.1s;
     }
     .library-cta:hover, .library-card-actions a:hover, .library-card-actions button:hover {
-      border-color: #58a6ff; color: #58a6ff; background: rgba(88, 166, 255, 0.08);
+      border-color: var(--insight-green); color: var(--insight-green); background: rgba(156,255,110,.08);
     }
     .library-section { margin-top: 26px; }
     .library-section h3 {
-      color: #8b949e; font-size: 11px; font-weight: 700; letter-spacing: 0.09em;
+      color: var(--insight-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.1em;
       text-transform: uppercase; margin-bottom: 11px;
     }
     .library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
     .library-card {
-      border: 1px solid #21262d; border-radius: 14px; background: #161822; padding: 15px;
+      border: 1px solid var(--insight-rule); background: linear-gradient(145deg, rgba(24,32,22,.96), rgba(8,11,10,.92)); padding: 16px;
       display: grid; gap: 10px; min-height: 190px; position: relative; overflow: hidden;
+      box-shadow: 5px 5px 0 rgba(156,255,110,.08);
     }
     .library-card::before {
       content: ''; position: absolute; inset: 0; pointer-events: none;
-      background: radial-gradient(circle at top right, rgba(88, 166, 255, 0.10), transparent 45%);
+      background: radial-gradient(circle at top right, rgba(156,255,110,.10), transparent 45%);
       opacity: 0; transition: opacity 0.2s;
     }
-    .library-card:hover { border-color: #30363d; }
+    .library-card:hover { border-color: var(--insight-green); }
     .library-card:hover::before { opacity: 1; }
-    .library-card-title { color: #e6edf3; font-size: 16px; line-height: 1.25; font-weight: 700; text-decoration: none; position: relative; z-index: 1; }
-    .library-card-title:hover { color: #58a6ff; }
-    .library-card p { color: #8b949e; font-size: 13px; line-height: 1.45; position: relative; z-index: 1; }
-    .library-meta { display: flex; gap: 7px; flex-wrap: wrap; color: #6e7681; font-size: 11px; position: relative; z-index: 1; }
-    .library-meta a { color: #d2a8ff; text-decoration: none; }
-    .library-pill { border: 1px solid #30363d; border-radius: 999px; padding: 3px 8px; background: #0d1117; }
+    .library-card-title { color: var(--insight-paper); font-family: Georgia, 'Times New Roman', serif; font-size: 18px; line-height: 1.16; font-weight: 700; text-decoration: none; position: relative; z-index: 1; }
+    .library-card-title:hover { color: var(--insight-green); }
+    .library-card p { color: #cbd5c2; font-size: 13px; line-height: 1.45; position: relative; z-index: 1; }
+    .library-meta { display: flex; gap: 7px; flex-wrap: wrap; color: var(--insight-muted); font-size: 11px; position: relative; z-index: 1; }
+    .library-meta a { color: var(--insight-amber); text-decoration: none; }
+    .library-pill { border: 1px solid #3d4938; border-radius: 0; padding: 3px 8px; background: #080b0a; }
     .library-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; position: relative; z-index: 1; }
     .library-empty, .library-error {
-      border: 1px dashed #30363d; border-radius: 14px; padding: 24px; color: #8b949e;
-      background: rgba(22, 24, 34, 0.65); line-height: 1.55;
+      border: 1px dashed var(--insight-rule); padding: 24px; color: var(--insight-muted);
+      background: rgba(16, 21, 17, .72); line-height: 1.55;
     }
     .library-error { border-color: rgba(248,81,73,.38); color: #ffd8d5; background: rgba(248,81,73,.08); }
     @media (max-width: 720px) {
@@ -197,17 +281,16 @@
     .provenance-panel {
       margin-bottom: 28px;
       padding: 18px 18px 16px;
-      border: 1px solid #21262d;
-      border-radius: 14px;
-      background: linear-gradient(180deg, rgba(22, 24, 34, 0.95), rgba(18, 20, 28, 0.95));
-      box-shadow: 0 12px 36px -24px rgba(88, 166, 255, 0.35);
+      border: 1px solid var(--insight-rule);
+      background: rgba(16, 21, 17, .92);
+      box-shadow: 5px 5px 0 rgba(156,255,110,.12);
     }
     .provenance-panel .eyebrow {
-      font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
-      color: #8b949e; margin-bottom: 8px;
+      font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--insight-amber); margin-bottom: 8px;
     }
     .provenance-panel .summary {
-      color: #c9d1d9; font-size: 13px; line-height: 1.55; max-width: 860px;
+      color: #dbe5d3; font-size: 13px; line-height: 1.55; max-width: 860px;
       margin-bottom: 14px;
     }
     .provenance-grid {
@@ -217,22 +300,21 @@
     }
     .provenance-card {
       padding: 12px 12px 11px;
-      border-radius: 10px;
-      background: #161822;
-      border: 1px solid #21262d;
+      background: #080b0a;
+      border: 1px solid var(--insight-rule);
     }
     .provenance-card .label {
-      font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
-      color: #8b949e; margin-bottom: 4px;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--insight-green); margin-bottom: 4px;
     }
     .provenance-card .value {
-      color: #e0e0e0; font-size: 13px; line-height: 1.45;
+      color: var(--insight-paper); font-size: 13px; line-height: 1.45;
     }
     .provenance-card .muted {
-      color: #8b949e;
+      color: var(--insight-muted);
     }
 
-    .data-section { margin-bottom: 24px; animation: cellEnter 0.5s ease-out backwards; }
+    .data-section { margin-bottom: 0; animation: cellEnter 0.5s ease-out backwards; }
     .data-section.full-width { grid-column: 1 / -1; }
     .data-section:nth-child(2) { animation-delay: 0.05s; }
     .data-section:nth-child(3) { animation-delay: 0.10s; }
@@ -240,84 +322,67 @@
     .data-section:nth-child(5) { animation-delay: 0.20s; }
     .data-section:nth-child(6) { animation-delay: 0.25s; }
     .data-section h3 {
-      font-size: 11px; font-weight: 600; color: #6e7681;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 11px; font-weight: 800; color: var(--insight-muted);
       text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;
+    }
+    .data-section h3::after {
+      content: ''; flex: 1; height: 1px; background: var(--insight-rule);
     }
     .data-grid {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px;
     }
+    .data-section.full-width .data-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
     .data-card {
-      padding: 14px; background: #161822;
-      border: 1px solid #21262d; border-radius: 10px;
+      appearance: none; width: 100%; padding: 15px; background: rgba(16, 21, 17, .82); text-align: left; font: inherit; color: inherit;
+      border: 1px solid var(--insight-rule); border-radius: 0;
       cursor: pointer; position: relative; overflow: hidden;
       transition: transform 0.15s ease, border-color 0.15s, box-shadow 0.2s;
     }
     .data-card::before {
       content: ''; position: absolute; inset: 0;
-      background: linear-gradient(135deg, rgba(88, 166, 255, 0.08), rgba(110, 64, 201, 0.08));
+      background: linear-gradient(135deg, rgba(156,255,110,.08), rgba(211,168,75,.08));
       opacity: 0; transition: opacity 0.2s; pointer-events: none;
     }
     .data-card:hover {
-      border-color: #58a6ff; transform: translateY(-2px);
-      box-shadow: 0 8px 24px -8px rgba(88, 166, 255, 0.35);
+      border-color: var(--insight-green); transform: translate(-1px, -1px);
+      box-shadow: 6px 6px 0 rgba(156,255,110,.14);
     }
     .data-card:hover::before { opacity: 1; }
     .data-card:active { transform: translateY(-1px); }
     .data-card.loading-pending {
-      border-color: #d29922;
+      border-color: var(--insight-amber);
       animation: runningGlow 1.6s ease-in-out infinite;
     }
     .data-card .card-title {
-      font-size: 14px; font-weight: 600; color: #c9d1d9; margin-bottom: 2px;
+      font-size: 15px; font-weight: 700; color: var(--insight-paper); margin-bottom: 4px;
       position: relative; z-index: 1;
     }
     .data-card .card-desc {
-      font-size: 11px; color: #6e7681; line-height: 1.35;
+      font-size: 12px; color: var(--insight-muted); line-height: 1.35;
       position: relative; z-index: 1;
     }
-
-    /* Upload tile — same shape as data-card, dashed accent */
-    .upload-card {
-      padding: 14px; background: #161822;
-      border: 1.5px dashed #30363d; border-radius: 10px;
-      cursor: pointer; position: relative; overflow: hidden;
-      display: flex; flex-direction: column; gap: 2px;
-      transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    .landing-action:focus-visible, .learn-links a:focus-visible, .data-card:focus-visible {
+      outline: 2px solid var(--insight-green); outline-offset: 3px;
     }
-    .upload-card:hover {
-      border-color: #58a6ff; transform: translateY(-2px);
-      box-shadow: 0 8px 24px -8px rgba(88, 166, 255, 0.35);
-      background: #1a1f2e;
-    }
-    .upload-card .card-title {
-      font-size: 14px; font-weight: 600; color: #c9d1d9; margin-bottom: 2px;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .upload-card .card-title::before {
-      content: '+'; display: inline-flex; align-items: center; justify-content: center;
-      width: 16px; height: 16px; border-radius: 50%;
-      background: linear-gradient(135deg, #58a6ff, #d2a8ff);
-      color: #0f1117; font-weight: 700; font-size: 13px; line-height: 1;
-    }
-    .upload-card .card-desc { font-size: 11px; color: #6e7681; line-height: 1.35; }
-    .upload-card input[type="file"] { display: none; }
 
     /* Full-page drop overlay */
     #drop-overlay {
       position: fixed; inset: 0; z-index: 100;
-      background: rgba(15, 17, 23, 0.85); backdrop-filter: blur(4px);
+      background: rgba(8, 11, 10, 0.86); backdrop-filter: blur(4px);
       display: none; align-items: center; justify-content: center;
       pointer-events: none;
     }
     #drop-overlay.active { display: flex; animation: dropPulse 1.4s ease-in-out infinite; }
     #drop-overlay .drop-card {
-      padding: 40px 60px; border: 2px dashed #58a6ff; border-radius: 16px;
-      background: rgba(88, 166, 255, 0.08); text-align: center;
+      padding: 40px 60px; border: 2px dashed var(--insight-green);
+      background: rgba(156,255,110,.08); text-align: center;
+      box-shadow: 8px 8px 0 rgba(156,255,110,.16);
     }
     #drop-overlay .drop-card .drop-title {
-      font-size: 22px; font-weight: 600; color: #c9d1d9; margin-bottom: 6px;
+      font-family: Georgia, 'Times New Roman', serif; font-size: 28px; font-weight: 500; color: var(--insight-paper); margin-bottom: 6px;
     }
-    #drop-overlay .drop-card .drop-sub { font-size: 13px; color: #8b949e; }
+    #drop-overlay .drop-card .drop-sub { font-size: 13px; color: var(--insight-muted); text-transform: uppercase; letter-spacing: .08em; }
 
     /* Cell */
     .cell {
@@ -572,25 +637,54 @@
 
   <!-- Landing: data picker -->
   <div id="landing">
-    <h2>Choose your data</h2>
-    <p class="subtitle">Pick a dataset to start exploring, or drop your own file anywhere on this page.</p>
-    <section class="learn-panel" aria-labelledby="learn-python-title">
-      <div class="eyebrow">New for beginners</div>
-      <h3 id="learn-python-title">Learn pandas with editable example notebooks</h3>
-      <p>Start with guided CSV exercises for tips, penguins, and Titanic survival rates. Open a notebook, inspect the pandas code, and change it in the browser.</p>
-      <div class="learn-links">
-        <a class="primary" href="/learn/python-pandas-csv">Open the tutorial</a>
-        <a href="/s/11111111">Tips notebook</a>
-        <a href="/s/22222222">Penguins notebook</a>
-        <a href="/s/33333333">Titanic notebook</a>
-        <a href="/learn/stock-comparison-pandas">Stock comparison tutorial</a>
-        <a href="/s/77777777">NVDA case study</a>
-        <a href="/s/44444444">NVDA peers</a>
-        <a href="/s/55555555">Pre-market template</a>
-        <a href="/s/66666666">Correlation notebook</a>
+    <section class="landing-hero" aria-labelledby="landing-title">
+      <div>
+        <div class="landing-eyebrow">Browser Python notebook</div>
+        <h2 id="landing-title">Explore data without setup.</h2>
+        <p class="subtitle">Upload a file or start from a curated dataset. Python runs locally in your browser, and notebooks can be shared when you are ready.</p>
+      </div>
+      <div class="landing-actions" aria-label="Start options">
+        <button type="button" id="landing-upload-btn" class="landing-action primary">
+          <strong>Upload your data</strong>
+          <span>CSV, JSON, TSV, Excel, or drag and drop anywhere.</span>
+        </button>
+        <a class="landing-action" href="/learn/python-pandas-csv">
+          <strong>Learn with a tutorial</strong>
+          <span>Open a guided pandas CSV notebook with editable examples.</span>
+        </a>
       </div>
     </section>
-    <div class="data-grid" id="data-grid"></div>
+    <section class="learn-panel" aria-labelledby="learn-python-title">
+      <div class="eyebrow">Guided examples</div>
+      <h3 id="learn-python-title">Use a finished notebook when you want a structured path</h3>
+      <p>Start with one guided notebook, then remix it for your own question.</p>
+      <div class="learn-links">
+        <a class="primary" href="/learn/python-pandas-csv">Pandas CSV tutorial</a>
+        <a href="/learn/stock-comparison-pandas">Stock comparison tutorial</a>
+        <a href="/s/11111111">Tips CSV notebook</a>
+        <a href="/s/77777777">NVDA case study</a>
+      </div>
+      <details class="more-examples">
+        <summary>More example notebooks</summary>
+        <div class="learn-links">
+          <a href="/s/22222222">Penguins CSV notebook</a>
+          <a href="/s/33333333">Titanic CSV notebook</a>
+          <a href="/s/44444444">NVDA peer analysis</a>
+          <a href="/s/55555555">Pre-market template</a>
+          <a href="/s/66666666">Correlation analysis</a>
+        </div>
+      </details>
+    </section>
+    <section class="dataset-picker" aria-labelledby="dataset-picker-title">
+      <div class="dataset-intro">
+        <div>
+          <h3 id="dataset-picker-title">Dataset starter packs</h3>
+          <p>Pick a sample dataset, or jump into curated research data when you need richer provenance.</p>
+        </div>
+        <div class="hint-text">Drop files anytime</div>
+      </div>
+      <div class="dataset-sections" id="data-grid"></div>
+    </section>
     <input type="file" id="file-input" accept=".csv,.json,.jsonl,.tsv,.xlsx,.xls" style="display:none">
   </div>
 
@@ -703,6 +797,7 @@
     const statusEl = document.getElementById('status');
     const dataGrid = document.getElementById('data-grid');
     const fileInput = document.getElementById('file-input');
+    const landingUploadBtn = document.getElementById('landing-upload-btn');
     const dropOverlay = document.getElementById('drop-overlay');
     const exploreBtn = document.getElementById('explore-btn');
     const libraryBtn = document.getElementById('library-btn');
@@ -782,6 +877,7 @@
       }
     });
     renderAuthUi();
+    landingUploadBtn.addEventListener('click', () => fileInput.click());
 
     function escapeClientHtml(value) {
       return String(value ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -1095,25 +1191,6 @@
       }
     }
 
-    // --- Render Your Data section first (upload tile) ---
-    (function renderUploadSection() {
-      const section = document.createElement('div');
-      section.className = 'data-section';
-      section.innerHTML = `<h3>Research workspace</h3>`;
-      const grid = document.createElement('div');
-      grid.className = 'data-grid';
-      const card = document.createElement('div');
-      card.className = 'upload-card';
-      card.innerHTML = `
-        <div class="card-title">Upload</div>
-        <div class="card-desc">CSV, JSON, TSV, or Excel - or drop anywhere</div>
-      `;
-      card.addEventListener('click', () => fileInput.click());
-      grid.appendChild(card);
-      section.appendChild(grid);
-      dataGrid.appendChild(section);
-    })();
-
     // --- Render grouped data cards ---
     Object.entries(DATASETS).forEach(([group, items]) => {
       const section = document.createElement('div');
@@ -1168,7 +1245,8 @@
       const grid = document.createElement('div');
       grid.className = 'data-grid';
       items.forEach(ds => {
-        const card = document.createElement('div');
+        const card = document.createElement('button');
+        card.type = 'button';
         card.className = 'data-card';
         card.innerHTML = `<div class="card-title">${ds.title}</div><div class="card-desc">${ds.desc}</div>`;
         card.addEventListener('click', () => {
