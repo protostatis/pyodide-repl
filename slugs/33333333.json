@@ -1,0 +1,17 @@
+{
+  "slug": "33333333",
+  "created": "2026-05-23T00:00:00.000Z",
+  "title": "Beginner pandas: Titanic survival by class",
+  "cells": [
+    {
+      "type": "code",
+      "code": "# Load the Titanic passenger dataset.\n# Goal: practice a categorical groupby and a rate calculation.\ndf = await load_url('https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv')\nprint(f'loaded titanic: {df.shape[0]} rows x {df.shape[1]} columns')\nprint(df.columns.tolist())\ndf[['Survived', 'Pclass', 'Sex', 'Age', 'Fare']].head()",
+      "html": "<span class='stdout'>loaded titanic: 891 rows x 12 columns\n['PassengerId', 'Survived', 'Pclass', 'Name', 'Sex', 'Age', 'SibSp', 'Parch', 'Ticket', 'Fare', 'Cabin', 'Embarked']</span><div class='df-output'><table class='df-table'><thead><tr><th>Survived</th><th>Pclass</th><th>Sex</th><th>Age</th><th>Fare</th></tr></thead><tbody><tr><td>0</td><td>3</td><td>male</td><td>22.0</td><td>7.25</td></tr><tr><td>1</td><td>1</td><td>female</td><td>38.0</td><td>71.2833</td></tr><tr><td>1</td><td>3</td><td>female</td><td>26.0</td><td>7.925</td></tr></tbody></table></div>"
+    },
+    {
+      "type": "ask",
+      "code": "what was the survival rate by passenger class?",
+      "html": "<span class='llm-note'>Turn a 0/1 column into a percentage by group</span><div class='generated-code'>survival_by_class = (\n    df.groupby('Pclass', as_index=False)\n    .agg(survival_rate=('Survived', 'mean'), passengers=('Survived', 'size'))\n    .sort_values('Pclass')\n)\nsurvival_by_class['survival_rate'] = (survival_by_class['survival_rate'] * 100).round(1)\nshow_df(survival_by_class)</div><div class='df-output'><table class='df-table'><thead><tr><th>Pclass</th><th>survival_rate</th><th>passengers</th></tr></thead><tbody><tr><td>1</td><td>63.0</td><td>216</td></tr><tr><td>2</td><td>47.3</td><td>184</td></tr><tr><td>3</td><td>24.2</td><td>491</td></tr></tbody></table></div><div class='agent-summary'>First-class passengers had the highest survival rate in this dataset. This is a compact example for teaching why the mean of a 0/1 column gives a rate.</div>"
+    }
+  ]
+}

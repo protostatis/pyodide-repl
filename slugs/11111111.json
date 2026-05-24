@@ -1,0 +1,17 @@
+{
+  "slug": "11111111",
+  "created": "2026-05-23T00:00:00.000Z",
+  "title": "Beginner pandas: tip rate by day",
+  "cells": [
+    {
+      "type": "code",
+      "code": "# Load the restaurant tips dataset.\n# Goal: inspect columns before making a grouped summary.\ndf = await load_url('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/tips.csv')\nprint(f'loaded tips: {df.shape[0]} rows x {df.shape[1]} columns')\nprint(df.columns.tolist())\ndf.head()",
+      "html": "<span class='stdout'>loaded tips: 244 rows x 7 columns\n['total_bill', 'tip', 'sex', 'smoker', 'day', 'time', 'size']</span><div class='df-output'><table class='df-table'><thead><tr><th>total_bill</th><th>tip</th><th>sex</th><th>day</th><th>time</th><th>size</th></tr></thead><tbody><tr><td>16.99</td><td>1.01</td><td>Female</td><td>Sun</td><td>Dinner</td><td>2</td></tr><tr><td>10.34</td><td>1.66</td><td>Male</td><td>Sun</td><td>Dinner</td><td>3</td></tr><tr><td>21.01</td><td>3.50</td><td>Male</td><td>Sun</td><td>Dinner</td><td>3</td></tr></tbody></table></div>"
+    },
+    {
+      "type": "ask",
+      "code": "which day has the highest average tip rate?",
+      "html": "<span class='llm-note'>Group rows, calculate a percentage, then sort</span><div class='generated-code'>df['tip_rate'] = df['tip'] / df['total_bill']\nby_day = (\n    df.groupby('day', as_index=False)\n    .agg(avg_tip_rate=('tip_rate', 'mean'), meals=('tip_rate', 'size'))\n    .sort_values('avg_tip_rate', ascending=False)\n)\nby_day['avg_tip_rate'] = (by_day['avg_tip_rate'] * 100).round(2)\nshow_df(by_day)</div><div class='df-output'><table class='df-table'><thead><tr><th>day</th><th>avg_tip_rate</th><th>meals</th></tr></thead><tbody><tr><td>Fri</td><td>16.99</td><td>19</td></tr><tr><td>Sun</td><td>16.69</td><td>76</td></tr><tr><td>Thur</td><td>16.13</td><td>62</td></tr><tr><td>Sat</td><td>15.32</td><td>87</td></tr></tbody></table></div><div class='agent-summary'>In this dataset, Friday has the highest average tip rate at about 17.0%, but it only has 19 meals. That is a good moment to teach beginners to check group size before trusting a ranking.</div>"
+    }
+  ]
+}

@@ -827,8 +827,24 @@ function renderPythonPandasCsvTutorial(canonicalUrl) {
     .toc a:hover { color: var(--accent); }
     .card { margin-top: 18px; padding: 16px; background: var(--panel-2); border: 1px solid var(--line); }
     .label { color: var(--accent); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
+    .notebook-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 20px 0 10px; }
+    .notebook-card {
+      display: block;
+      min-height: 178px;
+      padding: 16px;
+      color: #eaf4e4;
+      text-decoration: none;
+      background: linear-gradient(145deg, rgba(24,32,22,.96), rgba(8,11,10,.92));
+      border: 1px solid var(--line);
+      box-shadow: 5px 5px 0 rgba(156,255,110,.14);
+    }
+    .notebook-card:hover { border-color: var(--accent); transform: translate(-1px, -1px); }
+    .notebook-card strong { display: block; margin: 8px 0; color: var(--paper); font-size: 17px; line-height: 1.25; }
+    .notebook-card span { color: var(--muted); font-size: 14px; }
+    .notebook-card .open { margin-top: 14px; color: var(--accent); font-weight: 800; }
     @media (max-width: 860px) {
       main { grid-template-columns: 1fr; }
+      .notebook-grid { grid-template-columns: 1fr; }
       aside { position: static; }
     }
   </style>
@@ -854,6 +870,31 @@ function renderPythonPandasCsvTutorial(canonicalUrl) {
         <li>Sort the result and make a simple bar chart.</li>
         <li>Explain what the chart does and does not prove.</li>
       </ul>
+
+      <div class="lesson" id="examples">
+        <h2>Example notebooks</h2>
+        <p>Open one of these editable notebooks first if you want to see the full beginner loop before trying your own CSV.</p>
+        <div class="notebook-grid">
+          <a class="notebook-card" href="/s/11111111">
+            <div class="label">Tips dataset</div>
+            <strong>Which day has the highest average tip rate?</strong>
+            <span>Practice creating a calculated column, grouping by day, and checking group size.</span>
+            <div class="open">Open notebook</div>
+          </a>
+          <a class="notebook-card" href="/s/22222222">
+            <div class="label">Penguins dataset</div>
+            <strong>How does body mass differ by species?</strong>
+            <span>Practice missing-value cleanup, grouping, rounding, and comparing categories.</span>
+            <div class="open">Open notebook</div>
+          </a>
+          <a class="notebook-card" href="/s/33333333">
+            <div class="label">Titanic dataset</div>
+            <strong>What was the survival rate by passenger class?</strong>
+            <span>Practice turning a 0/1 column into a percentage with <code>groupby</code>.</span>
+            <div class="open">Open notebook</div>
+          </a>
+        </div>
+      </div>
 
       <div class="lesson" id="question">
         <h2>1. Start with a question</h2>
@@ -918,6 +959,7 @@ genre_rating.head(10).plot(
     <aside>
       <div class="label">On this page</div>
       <nav class="toc" aria-label="Tutorial sections">
+        <a href="#examples">Example notebooks</a>
         <a href="#question">Start with a question</a>
         <a href="#inspect">Inspect first</a>
         <a href="#clean">Clean missing values</a>

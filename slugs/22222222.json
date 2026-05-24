@@ -1,0 +1,17 @@
+{
+  "slug": "22222222",
+  "created": "2026-05-23T00:00:00.000Z",
+  "title": "Beginner pandas: penguin body mass by species",
+  "cells": [
+    {
+      "type": "code",
+      "code": "# Load a small biology dataset.\n# Goal: practice dropna, groupby, and a simple comparison table.\ndf = await load_url('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/penguins.csv')\nprint(f'loaded penguins: {df.shape[0]} rows x {df.shape[1]} columns')\nprint(df.columns.tolist())\ndf.head()",
+      "html": "<span class='stdout'>loaded penguins: 344 rows x 7 columns\n['species', 'island', 'bill_length_mm', 'bill_depth_mm', 'flipper_length_mm', 'body_mass_g', 'sex']</span><div class='df-output'><table class='df-table'><thead><tr><th>species</th><th>island</th><th>bill_length_mm</th><th>flipper_length_mm</th><th>body_mass_g</th></tr></thead><tbody><tr><td>Adelie</td><td>Torgersen</td><td>39.1</td><td>181.0</td><td>3750.0</td></tr><tr><td>Adelie</td><td>Torgersen</td><td>39.5</td><td>186.0</td><td>3800.0</td></tr><tr><td>Adelie</td><td>Torgersen</td><td>40.3</td><td>195.0</td><td>3250.0</td></tr></tbody></table></div>"
+    },
+    {
+      "type": "ask",
+      "code": "compare average body mass across penguin species",
+      "html": "<span class='llm-note'>Clean missing body mass values, then group by species</span><div class='generated-code'>clean = df.dropna(subset=['species', 'body_mass_g'])\nby_species = (\n    clean.groupby('species', as_index=False)\n    .agg(avg_body_mass_g=('body_mass_g', 'mean'), penguins=('body_mass_g', 'size'))\n    .sort_values('avg_body_mass_g', ascending=False)\n)\nby_species['avg_body_mass_g'] = by_species['avg_body_mass_g'].round(1)\nshow_df(by_species)</div><div class='df-output'><table class='df-table'><thead><tr><th>species</th><th>avg_body_mass_g</th><th>penguins</th></tr></thead><tbody><tr><td>Gentoo</td><td>5076.0</td><td>123</td></tr><tr><td>Chinstrap</td><td>3733.1</td><td>68</td></tr><tr><td>Adelie</td><td>3700.7</td><td>151</td></tr></tbody></table></div><div class='agent-summary'>Gentoo penguins are much heavier on average in this dataset. This example is useful for teaching dropna, grouping, rounding, and checking how many rows went into each average.</div>"
+    }
+  ]
+}
