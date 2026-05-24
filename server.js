@@ -1037,6 +1037,7 @@ function renderStockComparisonTutorial(canonicalUrl) {
       <h2>Editable stock notebooks</h2>
       <p>Open a notebook, rerun the cells, then change the ticker list or pre-market table.</p>
       <div class="notebook-grid" id="examples">
+        <a class="notebook-card" href="/s/77777777"><div class="label">Full case study</div><strong>NVDA peer read-through: recent leader or laggard?</strong><span>Compare NVDA against a correlation-weighted AI/semiconductor peer basket with residuals and caveats.</span><div class="open">Open notebook</div></a>
         <a class="notebook-card" href="/s/44444444"><div class="label">Peer comparison</div><strong>NVDA vs AMD, AVGO, MSFT, and QQQ</strong><span>Compare one-year return, annualized volatility, and correlation to NVDA.</span><div class="open">Open notebook</div></a>
         <a class="notebook-card" href="/s/55555555"><div class="label">Pre-market template</div><strong>Peer-implied move from similar tickers</strong><span>Enter pre-market movers, score feature similarity, and compare actual move to peer read-through.</span><div class="open">Open notebook</div></a>
         <a class="notebook-card" href="/s/66666666"><div class="label">Correlation matrix</div><strong>Megacap daily return correlations</strong><span>Build a return matrix for AAPL, MSFT, GOOGL, AMZN, META, and SPY.</span><div class="open">Open notebook</div></a>
