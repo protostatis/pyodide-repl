@@ -23,7 +23,7 @@ npm install --production
 # Create .env — set your OpenRouter key here
 cat > .env <<'ENVEOF'
 OPENROUTER_API_KEY=your-key-here
-OPENROUTER_MODEL=xiaomi/mimo-v2-flash
+OPENROUTER_MODEL=xiaomi/mimo-v2.5
 OPENROUTER_FALLBACK_MODEL=openrouter/free
 ENVEOF
 

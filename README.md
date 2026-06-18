@@ -34,7 +34,7 @@ Browser                           Server (Node.js)
 
 ## Features
 
-- **AI agent** — natural language → pandas code via OpenRouter (xiaomi/mimo-v2-flash)
+- **AI agent** — natural language → pandas code via OpenRouter (xiaomi/mimo-v2.5)
 - **Agent interpretation** — LLM summarizes execution results after each cell
 - **19 curated datasets** — stocks, crypto, classic ML (Titanic, Iris, Penguins), real-world data
 - **File upload** — drag & drop CSV, JSON, TSV, Excel (.xlsx)
@@ -58,7 +58,7 @@ npm start             # http://localhost:3000
 
 ```
 OPENROUTER_API_KEY=your-key-here
-OPENROUTER_MODEL=xiaomi/mimo-v2-flash
+OPENROUTER_MODEL=xiaomi/mimo-v2.5
 OPENROUTER_FALLBACK_MODEL=openrouter/free
 ```
 
