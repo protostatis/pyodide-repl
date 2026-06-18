@@ -34,7 +34,7 @@ if (existsSync(envPath)) {
 }
 
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY || "";
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "xiaomi/mimo-v2-flash";
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "xiaomi/mimo-v2.5";
 const OPENROUTER_FALLBACK = process.env.OPENROUTER_FALLBACK_MODEL || "openrouter/free";
 const AUTH_AUDIENCE = "sky-search";
 const INSIGHTS_DB_PATH = process.env.INSIGHTS_DB_PATH || (process.env.NODE_ENV === "test" ? ":memory:" : join(__dirname, "insights.db"));
